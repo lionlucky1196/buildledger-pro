@@ -1,0 +1,2292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BuildLedger Pro — Construction Accounting</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #1a6b3c;
+    --primary-light: #2d9657;
+    --primary-pale: #e8f5ee;
+    --accent: #f59e0b;
+    --accent-light: #fef3c7;
+    --danger: #ef4444;
+    --danger-light: #fee2e2;
+    --info: #3b82f6;
+    --info-light: #dbeafe;
+    --bg: #f0f4f2;
+    --surface: #ffffff;
+    --surface2: #f8faf9;
+    --border: #d1e0d8;
+    --text: #1a2e24;
+    --text-muted: #6b8878;
+    --text-light: #9ab5a8;
+    --shadow-sm: 0 1px 3px rgba(26,107,60,0.08), 0 1px 2px rgba(26,107,60,0.06);
+    --shadow: 0 4px 16px rgba(26,107,60,0.1), 0 2px 6px rgba(26,107,60,0.06);
+    --shadow-lg: 0 10px 40px rgba(26,107,60,0.15), 0 4px 12px rgba(26,107,60,0.08);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-lg: 20px;
+    --sidebar-w: 240px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  .sync-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+  .sync-ok { background: var(--primary-pale); color: var(--primary); }
+  .sync-loading { background: var(--accent-light); color: #92400e; }
+  .sync-error { background: var(--danger-light); color: var(--danger); }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display:inline-block; }
+  .sync-dot.pulse { animation: pulseSync 1.5s infinite; }
+  @keyframes pulseSync { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .loading-overlay { position: fixed; inset: 0; background: rgba(26,46,36,0.75); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  .loading-spinner { width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spinSync 1s linear infinite; }
+  @keyframes spinSync { to { transform: rotate(360deg); } }
+  .loading-text { color: #fff; font-size: 14px; font-weight: 500; }
+
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── LAYOUT ── */
+  .app { display: flex; min-height: 100vh; }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--primary);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+  }
+
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .logo-mark {
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800; color: #1a2e24;
+    flex-shrink: 0;
+  }
+
+  .logo-text { color: #fff; }
+  .logo-text strong { display: block; font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
+  .logo-text span { font-size: 10px; opacity: .6; text-transform: uppercase; letter-spacing: 1px; }
+
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+
+  .nav-section-label {
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.4);
+    padding: 8px 8px 4px;
+    margin-top: 8px;
+  }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all .2s;
+    color: rgba(255,255,255,0.7);
+    font-size: 13.5px; font-weight: 500;
+    margin-bottom: 2px;
+    border: none; background: none; width: 100%; text-align: left;
+  }
+
+  .nav-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .nav-item.active { background: rgba(255,255,255,0.18); color: #fff; font-weight: 600; }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+
+  .sidebar-footer {
+    padding: 16px 12px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    text-align: center;
+  }
+
+  /* ── MAIN ── */
+  .main { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .topbar-left { display: flex; align-items: center; gap: 16px; }
+  .page-title { font-size: 17px; font-weight: 700; color: var(--text); }
+  .page-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+  .content { padding: 24px 28px; flex: 1; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .card-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 20px 22px; }
+
+  /* ── STAT CARDS ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 20px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    transition: transform .2s, box-shadow .2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--primary));
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+  .stat-icon { font-size: 22px; margin-bottom: 12px; }
+  .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 800; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .stat-change { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .stat-change.up { color: var(--primary-light); }
+  .stat-change.down { color: var(--danger); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; transition: all .2s; text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-light); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,107,60,0.3); }
+
+  .btn-accent { background: var(--accent); color: #1a2e24; }
+  .btn-accent:hover { background: #d97706; transform: translateY(-1px); }
+
+  .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-icon { padding: 8px; min-width: 34px; justify-content: center; }
+
+  /* ── FORM ── */
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px; font-family: 'Inter', sans-serif;
+    color: var(--text); background: var(--surface2);
+    transition: border-color .2s, box-shadow .2s;
+    outline: none;
+  }
+
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(26,107,60,0.12);
+    background: var(--surface);
+  }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+  .amount-field { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+
+  /* ── BADGE ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600;
+  }
+
+  .badge-income { background: var(--primary-pale); color: var(--primary); }
+  .badge-expense { background: var(--danger-light); color: var(--danger); }
+  .badge-cash { background: #ecfdf5; color: #059669; }
+  .badge-upi { background: #ede9fe; color: #7c3aed; }
+  .badge-cheque { background: #fff7ed; color: #c2410c; }
+  .badge-pending { background: #fef3c7; color: #b45309; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 11px 16px; text-align: left;
+    font-size: 11px; font-weight: 700;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: .7px;
+    background: var(--surface2);
+    border-bottom: 1.5px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 13px 16px; font-size: 13.5px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background .15s; }
+  tbody tr:hover { background: var(--surface2); }
+
+  .amount-cell { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 13px; }
+  .income-amount { color: var(--primary); }
+  .expense-amount { color: var(--danger); }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(26,46,36,0.55);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: none; align-items: center; justify-content: center;
+    animation: fadeIn .2s;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 92%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp .25s cubic-bezier(.4,0,.2,1);
+  }
+
+  .modal-lg { max-width: 780px; }
+
+  .modal-header {
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; background: var(--surface); z-index: 1;
+  }
+
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); line-height: 1; padding: 4px; border-radius: 6px; }
+  .modal-close:hover { background: var(--surface2); color: var(--text); }
+  .modal-body { padding: 22px 24px; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ── SEARCH / FILTER BAR ── */
+  .filter-bar {
+    display: flex; gap: 10px; align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .search-wrap .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; }
+  .search-wrap input { padding-left: 36px; }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 4px; background: var(--surface2); padding: 4px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+  .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: none; color: var(--text-muted); transition: all .2s; }
+  .tab.active { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-sm); }
+
+  /* ── PAGES ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .fade-in { animation: fadeIn .3s ease; }
+  .count-up { animation: countUp .5s ease; }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar { height: 8px; background: var(--border); border-radius: 100px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 100px; transition: width .6s ease; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: .5; }
+  .empty-state h3 { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .empty-state p { font-size: 13px; }
+
+  /* ── SITE CARD ── */
+  .site-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+  .site-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: transform .2s, box-shadow .2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .site-card::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 80px; height: 80px;
+    background: var(--primary-pale);
+    border-radius: 0 0 0 80px;
+    opacity: .5;
+  }
+
+  .site-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+  .site-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+  .site-name { font-size: 15px; font-weight: 700; }
+  .site-location { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .site-status { padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+  .status-active { background: var(--primary-pale); color: var(--primary); }
+  .status-completed { background: var(--info-light); color: var(--info); }
+  .status-paused { background: var(--accent-light); color: #92400e; }
+
+  .site-pnl { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .site-pnl-item { text-align: center; }
+  .site-pnl-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .site-pnl-value { font-size: 14px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+
+  /* ── LEDGER ── */
+  .person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+
+  .person-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+
+  .person-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow); }
+  .person-avatar {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800; color: #fff;
+    margin-bottom: 12px;
+  }
+
+  .person-name { font-size: 14px; font-weight: 700; }
+  .person-type { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .person-balance { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 800; margin-top: 12px; }
+  .balance-due { color: var(--danger); }
+  .balance-advance { color: var(--primary-light); }
+  .balance-clear { color: var(--text-muted); }
+
+  /* ── REPORTS ── */
+  .report-section { margin-bottom: 24px; }
+  .report-title { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; }
+
+  .pnl-table { width: 100%; }
+  .pnl-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .pnl-row:last-child { border-bottom: none; }
+  .pnl-row.total { font-weight: 700; font-size: 15px; padding: 14px 0 0; margin-top: 4px; border-bottom: none; }
+  .pnl-label { font-size: 13.5px; }
+  .pnl-amount { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 13.5px; }
+
+  /* ── TOAST ── */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+  .toast {
+    background: var(--text);
+    color: #fff;
+    padding: 13px 20px;
+    border-radius: var(--radius-sm);
+    font-size: 13.5px; font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    animation: slideUp .3s ease;
+    display: flex; align-items: center; gap: 10px;
+    max-width: 320px;
+  }
+
+  .toast.success { background: var(--primary); }
+  .toast.error { background: var(--danger); }
+  .toast.warning { background: #d97706; }
+
+  /* ── DIVIDER ── */
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* ── MOBILE TOGGLE ── */
+  .mobile-menu-btn {
+    display: none; background: none; border: none;
+    font-size: 22px; cursor: pointer; color: var(--text);
+    padding: 4px;
+  }
+
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay.open { display: block; }
+    .main { margin-left: 0; }
+    .mobile-menu-btn { display: block; }
+    .content { padding: 16px; }
+    .topbar { padding: 0 16px; }
+    .form-row, .form-row-3 { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .filter-bar { flex-direction: column; align-items: stretch; }
+  }
+
+  /* ── RUPEE FORMAT ── */
+  .rupee::before { content: '₹'; font-size: .85em; }
+
+  /* ── COLOR UTILITIES ── */
+  .text-income { color: var(--primary-light) !important; }
+  .text-expense { color: var(--danger) !important; }
+  .text-neutral { color: var(--text-muted) !important; }
+
+  /* Highlight row flash */
+  @keyframes rowFlash { 0%,100% { background: transparent; } 50% { background: rgba(26,107,60,0.08); } }
+  .row-flash { animation: rowFlash .6s ease; }
+
+  /* Section gap */
+  .section-gap { margin-bottom: 20px; }
+
+  /* Quick type selector */
+  .type-toggle { display: flex; gap: 8px; }
+  .type-btn {
+    flex: 1; padding: 12px; border-radius: var(--radius-sm);
+    border: 2px solid var(--border); background: var(--surface2);
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s;
+    text-align: center;
+  }
+
+  .type-btn.income.selected { border-color: var(--primary); background: var(--primary-pale); color: var(--primary); }
+  .type-btn.expense.selected { border-color: var(--danger); background: var(--danger-light); color: var(--danger); }
+
+  /* Backup box */
+  .backup-box {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--surface2);
+  }
+
+  .backup-box:hover { border-color: var(--primary); background: var(--primary-pale); }
+  .backup-box .backup-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* Chart bars */
+  .chart-bar-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .chart-bar-item { display: flex; align-items: center; gap: 12px; }
+  .chart-bar-label { width: 110px; font-size: 12px; font-weight: 600; color: var(--text-muted); text-align: right; flex-shrink: 0; }
+  .chart-bar-track { flex: 1; height: 28px; background: var(--border); border-radius: 6px; overflow: hidden; position: relative; }
+  .chart-bar-fill { height: 100%; border-radius: 6px; transition: width .8s cubic-bezier(.4,0,.2,1); display: flex; align-items: center; padding-left: 10px; }
+  .chart-bar-val { font-size: 11px; font-weight: 700; color: #fff; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+  .chart-bar-2nd { position: absolute; top: 0; height: 100%; border-radius: 6px; opacity: .35; }
+
+  /* Confirm dialog */
+  .confirm-options { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+  .confirm-option {
+    border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 14px;
+    cursor: pointer; transition: all .2s;
+  }
+
+  .confirm-option:hover, .confirm-option.selected { border-color: var(--primary); background: var(--primary-pale); }
+  .confirm-option label { font-weight: 600; font-size: 13.5px; display: block; cursor: pointer; }
+  .confirm-option small { color: var(--text-muted); font-size: 12px; }
+
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><div class="loading-text">Supabase shī connect hot ahe...</div></div>
+
+<!-- Sidebar overlay for mobile -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="app">
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">🏗</div>
+        <div class="logo-text">
+          <strong>BuildLedger Pro</strong>
+          <span>Construction Accounts</span>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <button class="nav-item active" onclick="showPage('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+      <button class="nav-item" onclick="showPage('transactions')">
+        <span class="nav-icon">💰</span> Transactions
+      </button>
+
+      <div class="nav-section-label">Manage</div>
+      <button class="nav-item" onclick="showPage('sites')">
+        <span class="nav-icon">🏗</span> Sites
+      </button>
+      <button class="nav-item" onclick="showPage('ledger')">
+        <span class="nav-icon">👥</span> Ledger
+      </button>
+
+      <div class="nav-section-label">Analytics</div>
+      <button class="nav-item" onclick="showPage('reports')">
+        <span class="nav-icon">📈</span> Reports & P&L
+      </button>
+
+      <div class="nav-section-label">System</div>
+      <button class="nav-item" onclick="showPage('backup')">
+        <span class="nav-icon">💾</span> Backup & Restore
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      BuildLedger Pro v1.0<br>All data saved locally
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+        <div>
+          <div class="page-title" id="pageTitle">Dashboard</div>
+          <div class="page-subtitle" id="pageSubtitle">Construction accounting overview</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="sync-badge sync-loading" id="syncBadge"><div class="sync-dot pulse"></div> Connecting...</div>
+        <button class="btn btn-primary btn-sm" onclick="openQuickAdd()">＋ Quick Add</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="content">
+
+      <!-- ══════════════ DASHBOARD ══════════════ -->
+      <div class="page active" id="page-dashboard">
+        <!-- Stats -->
+        <div class="stats-grid" id="dashStats"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="section-gap">
+          <!-- Site P&L chart -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🏗 Site-wise Income vs Expense</div>
+            </div>
+            <div class="card-body">
+              <div class="chart-bar-wrap" id="siteChart">
+                <div class="empty-state"><p>Add sites and transactions to see chart</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment mode breakdown -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">💳 Payment Mode Breakdown</div>
+            </div>
+            <div class="card-body" id="paymentModeChart">
+              <div class="empty-state"><p>No transactions yet</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent transactions -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🕐 Recent Transactions</div>
+            <button class="btn btn-ghost btn-sm" onclick="showPage('transactions')">View All</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Site</th>
+                  <th>Mode</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="recentTxnTable">
+                <tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💸</div><h3>No transactions yet</h3><p>Add your first income or expense</p></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ TRANSACTIONS ══════════════ -->
+      <div class="page" id="page-transactions">
+        <div class="filter-bar">
+          <div class="search-wrap" style="flex:2">
+            <span class="search-icon">🔍</span>
+            <input class="form-input" id="txnSearch" placeholder="Search description, person, site..." oninput="renderTransactions()">
+          </div>
+          <select class="form-select" style="width:140px" id="txnSiteFilter" onchange="renderTransactions()">
+            <option value="">All Sites</option>
+          </select>
+          <select class="form-select" style="width:120px" id="txnTypeFilter" onchange="renderTransactions()">
+            <option value="">All Types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+          <select class="form-select" style="width:130px" id="txnModeFilter" onchange="renderTransactions()">
+            <option value="">All Modes</option>
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="cheque">Cheque</option>
+          </select>
+          <input type="date" class="form-input" style="width:145px" id="txnDateFrom" onchange="renderTransactions()" title="From date">
+          <input type="date" class="form-input" style="width:145px" id="txnDateTo" onchange="renderTransactions()" title="To date">
+          <button class="btn btn-ghost btn-sm" onclick="clearTxnFilters()">✕ Clear</button>
+          <button class="btn btn-primary btn-sm" onclick="openAddTxn()">＋ Add</button>
+        </div>
+
+        <!-- Summary pills -->
+        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;" id="txnSummaryPills"></div>
+
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Site</th>
+                  <th>Person</th>
+                  <th>Mode</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Notes</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="txnTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ SITES ══════════════ -->
+      <div class="page" id="page-sites">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <div class="tabs" id="sitesTabs">
+            <button class="tab active" onclick="filterSites('all', this)">All Sites</button>
+            <button class="tab" onclick="filterSites('active', this)">Active</button>
+            <button class="tab" onclick="filterSites('completed', this)">Completed</button>
+          </div>
+          <button class="btn btn-primary" onclick="openAddSite()">＋ New Site</button>
+        </div>
+
+        <div class="site-grid" id="siteGrid">
+          <div style="grid-column:1/-1">
+            <div class="empty-state">
+              <div class="empty-icon">🏗</div>
+              <h3>No sites added</h3>
+              <p>Add your construction sites to start tracking</p>
+              <br>
+              <button class="btn btn-primary" onclick="openAddSite()">＋ Add First Site</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ LEDGER ══════════════ -->
+      <div class="page" id="page-ledger">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <div class="search-wrap" style="max-width:320px">
+            <span class="search-icon">🔍</span>
+            <input class="form-input" id="personSearch" placeholder="Search person..." oninput="renderPersonGrid()">
+          </div>
+          <button class="btn btn-primary" onclick="openAddPerson()">＋ Add Person</button>
+        </div>
+
+        <div class="person-grid" id="personGrid">
+          <div style="grid-column:1/-1">
+            <div class="empty-state">
+              <div class="empty-icon">👥</div>
+              <h3>No persons added</h3>
+              <p>Add workers, suppliers, and clients to track their ledger</p>
+              <br>
+              <button class="btn btn-primary" onclick="openAddPerson()">＋ Add Person</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ REPORTS ══════════════ -->
+      <div class="page" id="page-reports">
+        <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+          <select class="form-select" style="width:180px" id="reportSiteFilter" onchange="renderReports()">
+            <option value="">All Sites</option>
+          </select>
+          <input type="date" class="form-input" style="width:145px" id="reportDateFrom" onchange="renderReports()">
+          <span style="color:var(--text-muted);font-size:13px">to</span>
+          <input type="date" class="form-input" style="width:145px" id="reportDateTo" onchange="renderReports()">
+          <button class="btn btn-ghost btn-sm" onclick="clearReportFilters()">✕ Clear</button>
+          <button class="btn btn-accent btn-sm" onclick="printReport()">🖨 Print</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <!-- P&L Summary -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">📊 Profit & Loss Summary</div></div>
+            <div class="card-body" id="reportPnL"></div>
+          </div>
+
+          <!-- Site-wise P&L -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">🏗 Site-wise P&L</div></div>
+            <div class="card-body" id="reportSitePnL"></div>
+          </div>
+
+          <!-- Payment mode -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">💳 Payment Mode Report</div></div>
+            <div class="card-body" id="reportPayMode"></div>
+          </div>
+
+          <!-- Top persons -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">👥 Person-wise Summary</div></div>
+            <div class="card-body" id="reportPersons"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════ BACKUP & RESTORE ══════════════ -->
+      <div class="page" id="page-backup">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:760px;">
+          <!-- Backup -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">💾 Backup Data</div></div>
+            <div class="card-body" style="text-align:center;">
+              <div style="font-size:48px;margin-bottom:16px;">💾</div>
+              <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;">Export all data</h3>
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">Downloads a JSON backup file with all your sites, transactions, persons, and settings. Keep it safe!</p>
+              <button class="btn btn-primary" style="width:100%" onclick="exportBackup()">⬇ Download Backup</button>
+              <div style="margin-top:12px;font-size:11px;color:var(--text-muted)" id="lastBackupInfo">No backup taken yet</div>
+            </div>
+          </div>
+
+          <!-- Restore -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">📂 Restore Data</div></div>
+            <div class="card-body">
+              <div class="backup-box" onclick="document.getElementById('restoreFile').click()">
+                <div class="backup-icon">📂</div>
+                <h3 style="font-size:14px;font-weight:700;margin-bottom:6px;">Choose backup file</h3>
+                <p style="font-size:12px;color:var(--text-muted)">Click to select .json backup file</p>
+              </div>
+              <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="handleRestore(this)">
+              <div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+                ⚠️ Restoring will ask whether to <strong>merge</strong> with existing data or <strong>overwrite</strong> completely.
+              </div>
+            </div>
+          </div>
+
+          <!-- Data summary -->
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-header"><div class="card-title">📋 Current Data Summary</div></div>
+            <div class="card-body">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;text-align:center;" id="dataSummary"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MODALS
+══════════════════════════════ -->
+
+<!-- Add/Edit Transaction Modal -->
+<div class="modal-overlay" id="txnModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="txnModalTitle">Add Transaction</div>
+      <button class="modal-close" onclick="closeTxnModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <div class="type-toggle">
+          <button class="type-btn income selected" id="typeIncome" onclick="setTxnType('income')">
+            ↑ Income
+          </button>
+          <button class="type-btn expense" id="typeExpense" onclick="setTxnType('expense')">
+            ↓ Expense
+          </button>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date *</label>
+          <input type="date" class="form-input" id="txnDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount (₹) *</label>
+          <input type="number" class="form-input amount-field" id="txnAmount" placeholder="0.00">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description *</label>
+        <input type="text" class="form-input" id="txnDesc" placeholder="e.g. Cement purchase, Labour payment...">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Site</label>
+          <select class="form-select" id="txnSite">
+            <option value="">Select site (optional)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Person</label>
+          <select class="form-select" id="txnPerson">
+            <option value="">Select person (optional)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Payment Mode *</label>
+          <select class="form-select" id="txnMode">
+            <option value="cash">💵 Cash</option>
+            <option value="upi">📱 UPI</option>
+            <option value="cheque">📄 Cheque</option>
+          </select>
+        </div>
+        <div class="form-group" id="chequeNoGroup" style="display:none">
+          <label class="form-label">Cheque No.</label>
+          <input type="text" class="form-input" id="txnChequeNo" placeholder="Cheque number">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="txnNotes" rows="2" placeholder="Additional notes..."></textarea>
+      </div>
+
+      <input type="hidden" id="txnEditId">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeTxnModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTxn()">💾 Save Transaction</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Site Modal -->
+<div class="modal-overlay" id="siteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="siteModalTitle">Add New Site</div>
+      <button class="modal-close" onclick="closeSiteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Site Name *</label>
+        <input type="text" class="form-input" id="siteName" placeholder="e.g. Pune Bungalow, Mumbai Flat...">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Location</label>
+          <input type="text" class="form-input" id="siteLocation" placeholder="City / Area">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="siteStatus">
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" class="form-input" id="siteStartDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Budget (₹)</label>
+          <input type="number" class="form-input amount-field" id="siteBudget" placeholder="Total budget">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client / Owner Name</label>
+        <input type="text" class="form-input" id="siteClient" placeholder="Client name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="siteNotes" rows="2" placeholder="Additional notes..."></textarea>
+      </div>
+      <input type="hidden" id="siteEditId">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSiteModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSite()">💾 Save Site</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Person Modal -->
+<div class="modal-overlay" id="personModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="personModalTitle">Add Person</div>
+      <button class="modal-close" onclick="closePersonModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input type="text" class="form-input" id="personName" placeholder="e.g. Ramesh Patil">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="personType">
+            <option value="worker">Worker / Labour</option>
+            <option value="supplier">Supplier</option>
+            <option value="client">Client</option>
+            <option value="contractor">Contractor</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input type="tel" class="form-input" id="personPhone" placeholder="Mobile number">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Opening Balance (₹)</label>
+          <input type="number" class="form-input amount-field" id="personOpenBalance" placeholder="0" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="personNotes" rows="2" placeholder="Address, UPI ID, etc."></textarea>
+      </div>
+      <input type="hidden" id="personEditId">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePersonModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePerson()">💾 Save Person</button>
+    </div>
+  </div>
+</div>
+
+<!-- Person Ledger Detail Modal -->
+<div class="modal-overlay" id="personDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="personDetailTitle">Person Ledger</div>
+      <button class="modal-close" onclick="closePersonDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="personDetailContent"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePersonDetail()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Site Detail Modal -->
+<div class="modal-overlay" id="siteDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="siteDetailTitle">Site Details</div>
+      <button class="modal-close" onclick="closeSiteDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="siteDetailContent"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSiteDetail()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Confirm Modal -->
+<div class="modal-overlay" id="restoreModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📂 Restore Options</div>
+      <button class="modal-close" onclick="closeRestoreModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;color:var(--text-muted);margin-bottom:4px;">Backup file contains:</p>
+      <div id="restoreFileInfo" style="background:var(--surface2);padding:12px;border-radius:8px;font-size:13px;margin-bottom:16px;"></div>
+
+      <p style="font-size:13.5px;font-weight:600;margin-bottom:10px;">How do you want to restore?</p>
+      <div class="confirm-options">
+        <div class="confirm-option selected" id="restoreOptAdd" onclick="selectRestoreOpt('add')">
+          <label>➕ Add to Existing Data</label>
+          <small>New records from backup will be added. Existing records won't be changed. (Recommended)</small>
+        </div>
+        <div class="confirm-option" id="restoreOptOver" onclick="selectRestoreOpt('overwrite')">
+          <label>⚠️ Overwrite All Data</label>
+          <small>All current data will be deleted and replaced with backup data. Cannot be undone!</small>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeRestoreModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRestore()">✅ Restore Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-header">
+      <div class="modal-title">🗑 Confirm Delete</div>
+      <button class="modal-close" onclick="closeDeleteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--text-muted);" id="deleteMsg">Are you sure you want to delete this record?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     JAVASCRIPT
+══════════════════════════════ -->
+<script>
+// ── SUPABASE CONFIG ──
+const SUPABASE_URL = 'https://thizsrfyzxtnujuxswwb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoaXpzcmZ5enh0bnVqdXhzd3diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MzEyMTAsImV4cCI6MjA5ODEwNzIxMH0.5Kf3FTQvIHM2zzcW3375FELTTnPtIpXVupCrZp6Jbsw';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── DATA STORE (Supabase-backed, in-memory cache) ──
+let DB = {
+  sites: [],
+  transactions: [],
+  persons: [],
+  settings: { currency: 'INR', lastBackup: null }
+};
+
+async function dbFetch(table) {
+  const { data, error } = await sb.from(table).select('*').order('created_at', { ascending: false });
+  if (error) { console.error(table, error); return []; }
+  return data || [];
+}
+async function dbInsert(table, row) {
+  const { data, error } = await sb.from(table).insert([row]).select().single();
+  if (error) throw error;
+  return data;
+}
+async function dbUpdate(table, id, row) {
+  const { error } = await sb.from(table).update(row).eq('id', id);
+  if (error) throw error;
+}
+async function dbDelete(table, id) {
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+
+async function loadAll() {
+  try {
+    setSyncStatus('loading');
+    const [sites, transactions, persons] = await Promise.all([
+      dbFetch('bl_sites'), dbFetch('bl_transactions'), dbFetch('bl_persons')
+    ]);
+    DB.sites = sites; DB.transactions = transactions; DB.persons = persons;
+    setSyncStatus('ok');
+    const ov = document.getElementById('loadingOverlay'); if (ov) ov.style.display = 'none';
+    renderDashboard(); populateSiteSelects();
+  } catch(e) {
+    setSyncStatus('error');
+    const ov = document.getElementById('loadingOverlay'); if (ov) ov.style.display = 'none';
+    toast('Supabase connection failed! ' + e.message, 'error');
+  }
+}
+
+function setSyncStatus(status) {
+  const el = document.getElementById('syncBadge');
+  if (!el) return;
+  const map = { ok: ['sync-ok','🟢 Synced'], loading: ['sync-loading','🔄 Syncing...'], error: ['sync-error','🔴 Offline'] };
+  el.className = 'sync-badge ' + map[status][0];
+  el.innerHTML = `<div class="sync-dot${status==='loading'?' pulse':''}"></div> ${map[status][1]}`;
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+// ── FORMAT ──
+function fmtCurrency(n) {
+  n = Number(n) || 0;
+  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const parts = d.split('-');
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+
+// ── NAV ──
+const pageMeta = {
+  dashboard: { title: 'Dashboard', subtitle: 'Construction accounting overview' },
+  transactions: { title: 'Transactions', subtitle: 'All income & expense records' },
+  sites: { title: 'Sites', subtitle: 'Manage your construction sites' },
+  ledger: { title: 'Ledger', subtitle: 'Person-wise account tracking' },
+  reports: { title: 'Reports & P&L', subtitle: 'Analytics and profit/loss' },
+  backup: { title: 'Backup & Restore', subtitle: 'Save and recover your data' },
+};
+
+let currentPage = 'dashboard';
+
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.textContent.toLowerCase().includes(pageMeta[page]?.title.toLowerCase().split(' ')[0])) {
+      n.classList.add('active');
+    }
+  });
+  currentPage = page;
+  document.getElementById('pageTitle').textContent = pageMeta[page]?.title || '';
+  document.getElementById('pageSubtitle').textContent = pageMeta[page]?.subtitle || '';
+  closeSidebar();
+
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'transactions') { populateSiteSelects(); renderTransactions(); }
+  if (page === 'sites') renderSites();
+  if (page === 'ledger') renderPersonGrid();
+  if (page === 'reports') { populateReportFilters(); renderReports(); }
+  if (page === 'backup') renderBackupPage();
+}
+
+// ── SIDEBAR ──
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+// ── TOAST ──
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', warning: '⚠️' };
+  el.innerHTML = `<span>${icons[type]||''}</span> ${msg}`;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── POPULATE SELECTS ──
+function populateSiteSelects() {
+  const selects = ['txnSite', 'txnSiteFilter', 'reportSiteFilter'];
+  selects.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const val = el.value;
+    while (el.options.length > 1) el.remove(1);
+    DB.sites.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id; opt.textContent = s.name;
+      el.appendChild(opt);
+    });
+    el.value = val;
+  });
+
+  const pSel = document.getElementById('txnPerson');
+  if (pSel) {
+    const val = pSel.value;
+    while (pSel.options.length > 1) pSel.remove(1);
+    DB.persons.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id; opt.textContent = p.name;
+      pSel.appendChild(opt);
+    });
+    pSel.value = val;
+  }
+}
+
+function getSiteName(id) {
+  const s = DB.sites.find(x => x.id === id);
+  return s ? s.name : (id ? '—' : '—');
+}
+
+function getPersonName(id) {
+  const p = DB.persons.find(x => x.id === id);
+  return p ? p.name : '—';
+}
+
+// ── DASHBOARD ──
+function renderDashboard() {
+  const income = DB.transactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const expense = DB.transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+  const profit = income - expense;
+
+  const statsEl = document.getElementById('dashStats');
+  statsEl.innerHTML = `
+    <div class="stat-card" style="--card-accent:var(--primary-light)">
+      <div class="stat-icon">💰</div>
+      <div class="stat-label">Total Income</div>
+      <div class="stat-value count-up">${fmtCurrency(income)}</div>
+      <div class="stat-change">${DB.transactions.filter(t=>t.type==='income').length} transactions</div>
+    </div>
+    <div class="stat-card" style="--card-accent:var(--danger)">
+      <div class="stat-icon">💸</div>
+      <div class="stat-label">Total Expense</div>
+      <div class="stat-value count-up">${fmtCurrency(expense)}</div>
+      <div class="stat-change">${DB.transactions.filter(t=>t.type==='expense').length} transactions</div>
+    </div>
+    <div class="stat-card" style="--card-accent:${profit>=0?'var(--accent)':'var(--danger)'}">
+      <div class="stat-icon">${profit>=0?'📈':'📉'}</div>
+      <div class="stat-label">Net Profit</div>
+      <div class="stat-value count-up" style="color:${profit>=0?'var(--primary)':'var(--danger)'}">${fmtCurrency(profit)}</div>
+      <div class="stat-change ${profit>=0?'up':'down'}">${profit>=0?'▲ Profitable':'▼ Loss'}</div>
+    </div>
+    <div class="stat-card" style="--card-accent:var(--info)">
+      <div class="stat-icon">🏗</div>
+      <div class="stat-label">Active Sites</div>
+      <div class="stat-value count-up">${DB.sites.filter(s=>s.status==='active').length}</div>
+      <div class="stat-change">${DB.sites.length} total sites</div>
+    </div>
+    <div class="stat-card" style="--card-accent:var(--accent)">
+      <div class="stat-icon">👥</div>
+      <div class="stat-label">Persons</div>
+      <div class="stat-value count-up">${DB.persons.length}</div>
+      <div class="stat-change">In ledger</div>
+    </div>
+  `;
+
+  // Site chart
+  const siteEl = document.getElementById('siteChart');
+  if (DB.sites.length === 0) {
+    siteEl.innerHTML = '<div class="empty-state"><p>Add sites to see chart</p></div>';
+  } else {
+    const siteTotals = DB.sites.map(s => {
+      const inc = DB.transactions.filter(t => t.site_id === s.id && t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+      const exp = DB.transactions.filter(t => t.site_id === s.id && t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+      return { name: s.name, inc, exp };
+    }).sort((a, b) => (b.inc + b.exp) - (a.inc + a.exp)).slice(0, 6);
+
+    const maxVal = Math.max(...siteTotals.map(s => Math.max(s.inc, s.exp)), 1);
+    siteEl.innerHTML = siteTotals.map(s => `
+      <div class="chart-bar-item">
+        <div class="chart-bar-label" title="${s.name}">${s.name.length > 13 ? s.name.slice(0,12)+'…' : s.name}</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+          <div class="chart-bar-track" style="height:20px;">
+            <div class="chart-bar-fill" style="width:${s.inc/maxVal*100}%;background:var(--primary-light);">
+              <span class="chart-bar-val">${s.inc>0?fmtCurrency(s.inc):''}</span>
+            </div>
+          </div>
+          <div class="chart-bar-track" style="height:20px;">
+            <div class="chart-bar-fill" style="width:${s.exp/maxVal*100}%;background:var(--danger);">
+              <span class="chart-bar-val">${s.exp>0?fmtCurrency(s.exp):''}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('') + `<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;font-weight:600;">
+      <span style="color:var(--primary-light)">█ Income</span>
+      <span style="color:var(--danger)">█ Expense</span>
+    </div>`;
+  }
+
+  // Payment mode chart
+  const modes = { cash: 0, upi: 0, cheque: 0 };
+  DB.transactions.forEach(t => { modes[t.mode] = (modes[t.mode] || 0) + Number(t.amount); });
+  const totalMode = Object.values(modes).reduce((a, b) => a + b, 0);
+  const modeColors = { cash: '#059669', upi: '#7c3aed', cheque: '#c2410c' };
+  const modeIcons = { cash: '💵', upi: '📱', cheque: '📄' };
+
+  const pmEl = document.getElementById('paymentModeChart');
+  if (totalMode === 0) {
+    pmEl.innerHTML = '<div class="empty-state"><p>No transactions yet</p></div>';
+  } else {
+    pmEl.innerHTML = `<div class="chart-bar-wrap">
+      ${Object.entries(modes).map(([mode, val]) => `
+        <div class="chart-bar-item">
+          <div class="chart-bar-label">${modeIcons[mode]} ${mode.toUpperCase()}</div>
+          <div class="chart-bar-track">
+            <div class="chart-bar-fill" style="width:${totalMode?val/totalMode*100:0}%;background:${modeColors[mode]}">
+              <span class="chart-bar-val">${fmtCurrency(val)}</span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  // Recent txns
+  const recent = [...DB.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
+  const tbody = document.getElementById('recentTxnTable');
+  if (recent.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💸</div><h3>No transactions yet</h3><p>Click "Quick Add" to add your first transaction</p></div></td></tr>';
+  } else {
+    tbody.innerHTML = recent.map(t => `
+      <tr class="fade-in">
+        <td>${fmtDate(t.date)}</td>
+        <td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description}</td>
+        <td><span style="font-size:12px">${t.site_id ? getSiteName(t.site_id) : '—'}</span></td>
+        <td><span class="badge badge-${t.mode}">${t.mode.toUpperCase()}</span></td>
+        <td><span class="badge badge-${t.type}">${t.type}</span></td>
+        <td class="amount-cell ${t.type === 'income' ? 'income-amount' : 'expense-amount'}">${fmtCurrency(t.amount)}</td>
+      </tr>
+    `).join('');
+  }
+}
+
+// ── TRANSACTIONS ──
+let currentTxnType = 'income';
+let pendingDeleteId = null;
+let pendingDeleteType = null;
+
+function openQuickAdd() {
+  openAddTxn();
+}
+
+function openAddTxn(id) {
+  populateSiteSelects();
+  document.getElementById('txnEditId').value = '';
+  document.getElementById('txnDate').value = today();
+  document.getElementById('txnAmount').value = '';
+  document.getElementById('txnDesc').value = '';
+  document.getElementById('txnSite').value = '';
+  document.getElementById('txnPerson').value = '';
+  document.getElementById('txnMode').value = 'cash';
+  document.getElementById('txnNotes').value = '';
+  document.getElementById('txnChequeNo').value = '';
+  document.getElementById('chequeNoGroup').style.display = 'none';
+  setTxnType('income');
+  document.getElementById('txnModalTitle').textContent = 'Add Transaction';
+
+  if (id) {
+    const t = DB.transactions.find(x => x.id === id);
+    if (!t) return;
+    document.getElementById('txnEditId').value = id;
+    document.getElementById('txnDate').value = t.date;
+    document.getElementById('txnAmount').value = t.amount;
+    document.getElementById('txnDesc').value = t.description;
+    document.getElementById('txnSite').value = t.site_id || '';
+    document.getElementById('txnPerson').value = t.person_id || '';
+    document.getElementById('txnMode').value = t.mode;
+    document.getElementById('txnNotes').value = t.notes || '';
+    document.getElementById('txnChequeNo').value = t.cheque_no || '';
+    if (t.mode === 'cheque') document.getElementById('chequeNoGroup').style.display = 'block';
+    setTxnType(t.type);
+    document.getElementById('txnModalTitle').textContent = 'Edit Transaction';
+  }
+
+  document.getElementById('txnModal').classList.add('open');
+}
+
+function setTxnType(type) {
+  currentTxnType = type;
+  document.getElementById('typeIncome').classList.toggle('selected', type === 'income');
+  document.getElementById('typeExpense').classList.toggle('selected', type === 'expense');
+}
+
+document.getElementById('txnMode').addEventListener('change', function() {
+  document.getElementById('chequeNoGroup').style.display = this.value === 'cheque' ? 'block' : 'none';
+});
+
+function closeTxnModal() {
+  document.getElementById('txnModal').classList.remove('open');
+}
+
+async function saveTxn() {
+  const date = document.getElementById('txnDate').value;
+  const amount = parseFloat(document.getElementById('txnAmount').value);
+  const desc = document.getElementById('txnDesc').value.trim();
+  const mode = document.getElementById('txnMode').value;
+
+  if (!date || !amount || !desc) { toast('Date, amount aani description mandatory ahet!', 'error'); return; }
+  if (amount <= 0) { toast('Amount 0 pasun jast pahije!', 'error'); return; }
+
+  const editId = document.getElementById('txnEditId').value;
+  const row = {
+    id: editId || genId(),
+    date, amount,
+    description: desc,
+    mode,
+    type: currentTxnType,
+    site_id: document.getElementById('txnSite').value || null,
+    person_id: document.getElementById('txnPerson').value || null,
+    notes: document.getElementById('txnNotes').value.trim() || null,
+    cheque_no: document.getElementById('txnChequeNo').value.trim() || null
+  };
+
+  try {
+    setSyncStatus('loading');
+    if (editId) {
+      await dbUpdate('bl_transactions', editId, row);
+      const idx = DB.transactions.findIndex(t => t.id === editId);
+      if (idx !== -1) DB.transactions[idx] = { ...DB.transactions[idx], ...row };
+      toast('Transaction updated!');
+    } else {
+      const saved = await dbInsert('bl_transactions', row);
+      DB.transactions.unshift(saved || row);
+      toast('Transaction saved!');
+    }
+    setSyncStatus('ok');
+    closeTxnModal();
+    if (currentPage === 'transactions') renderTransactions();
+    if (currentPage === 'dashboard') renderDashboard();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+function clearTxnFilters() {
+  document.getElementById('txnSearch').value = '';
+  document.getElementById('txnSiteFilter').value = '';
+  document.getElementById('txnTypeFilter').value = '';
+  document.getElementById('txnModeFilter').value = '';
+  document.getElementById('txnDateFrom').value = '';
+  document.getElementById('txnDateTo').value = '';
+  renderTransactions();
+}
+
+function renderTransactions() {
+  const search = document.getElementById('txnSearch').value.toLowerCase();
+  const siteF = document.getElementById('txnSiteFilter').value;
+  const typeF = document.getElementById('txnTypeFilter').value;
+  const modeF = document.getElementById('txnModeFilter').value;
+  const dateFrom = document.getElementById('txnDateFrom').value;
+  const dateTo = document.getElementById('txnDateTo').value;
+
+  let txns = [...DB.transactions];
+
+  if (search) txns = txns.filter(t =>
+    t.description.toLowerCase().includes(search) ||
+    getSiteName(t.site_id).toLowerCase().includes(search) ||
+    getPersonName(t.person_id).toLowerCase().includes(search) ||
+    (t.notes || '').toLowerCase().includes(search)
+  );
+
+  if (siteF) txns = txns.filter(t => t.site_id === siteF);
+  if (typeF) txns = txns.filter(t => t.type === typeF);
+  if (modeF) txns = txns.filter(t => t.mode === modeF);
+  if (dateFrom) txns = txns.filter(t => t.date >= dateFrom);
+  if (dateTo) txns = txns.filter(t => t.date <= dateTo);
+
+  txns.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Summary pills
+  const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const expense = txns.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+  document.getElementById('txnSummaryPills').innerHTML = `
+    <span class="badge badge-income" style="font-size:12px;padding:5px 14px">↑ Income: ${fmtCurrency(income)}</span>
+    <span class="badge badge-expense" style="font-size:12px;padding:5px 14px">↓ Expense: ${fmtCurrency(expense)}</span>
+    <span class="badge" style="background:var(--surface);border:1px solid var(--border);font-size:12px;padding:5px 14px;color:${income-expense>=0?'var(--primary)':'var(--danger)'}">${income-expense>=0?'▲':'▼'} Net: ${fmtCurrency(income-expense)}</span>
+    <span class="badge" style="background:var(--surface2);border:1px solid var(--border);font-size:12px;padding:5px 14px;color:var(--text-muted)">${txns.length} records</span>
+  `;
+
+  const tbody = document.getElementById('txnTable');
+  if (txns.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🔍</div><h3>No transactions found</h3><p>Try changing your filters</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = txns.map(t => `
+    <tr class="fade-in">
+      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${fmtDate(t.date)}</td>
+      <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.description}">${t.description}</td>
+      <td style="font-size:12px">${t.site_id ? getSiteName(t.site_id) : '<span style="color:var(--text-light)">—</span>'}</td>
+      <td style="font-size:12px">${t.person_id ? getPersonName(t.person_id) : '<span style="color:var(--text-light)">—</span>'}</td>
+      <td><span class="badge badge-${t.mode}">${t.mode.toUpperCase()}</span></td>
+      <td><span class="badge badge-${t.type}">${t.type === 'income' ? '↑ Income' : '↓ Expense'}</span></td>
+      <td class="amount-cell ${t.type === 'income' ? 'income-amount' : 'expense-amount'}" style="white-space:nowrap">${fmtCurrency(t.amount)}</td>
+      <td style="font-size:11px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.notes||''}">${t.notes || '—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="openAddTxn('${t.id}')" title="Edit">✏️</button>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteTxn('${t.id}')" title="Delete">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function deleteTxn(id) {
+  pendingDeleteId = id;
+  pendingDeleteType = 'txn';
+  document.getElementById('deleteMsg').textContent = 'Are you sure you want to delete this transaction? This cannot be undone.';
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+// ── SITES ──
+let siteFilterStatus = 'all';
+
+function filterSites(status, el) {
+  siteFilterStatus = status;
+  document.querySelectorAll('#sitesTabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderSites();
+}
+
+function openAddSite(id) {
+  document.getElementById('siteEditId').value = '';
+  document.getElementById('siteName').value = '';
+  document.getElementById('siteLocation').value = '';
+  document.getElementById('siteStatus').value = 'active';
+  document.getElementById('siteStartDate').value = today();
+  document.getElementById('siteBudget').value = '';
+  document.getElementById('siteClient').value = '';
+  document.getElementById('siteNotes').value = '';
+  document.getElementById('siteModalTitle').textContent = 'Add New Site';
+
+  if (id) {
+    const s = DB.sites.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('siteEditId').value = id;
+    document.getElementById('siteName').value = s.name;
+    document.getElementById('siteLocation').value = s.location || '';
+    document.getElementById('siteStatus').value = s.status;
+    document.getElementById('siteStartDate').value = s.startDate || '';
+    document.getElementById('siteBudget').value = s.budget || '';
+    document.getElementById('siteClient').value = s.client || '';
+    document.getElementById('siteNotes').value = s.notes || '';
+    document.getElementById('siteModalTitle').textContent = 'Edit Site';
+  }
+
+  document.getElementById('siteModal').classList.add('open');
+}
+
+function closeSiteModal() {
+  document.getElementById('siteModal').classList.remove('open');
+}
+
+async function saveSite() {
+  const name = document.getElementById('siteName').value.trim();
+  if (!name) { toast('Site name mandatory ahe!', 'error'); return; }
+
+  const editId = document.getElementById('siteEditId').value;
+  const row = {
+    id: editId || genId(),
+    name,
+    location: document.getElementById('siteLocation').value.trim() || null,
+    status: document.getElementById('siteStatus').value,
+    start_date: document.getElementById('siteStartDate').value || null,
+    budget: parseFloat(document.getElementById('siteBudget').value) || 0,
+    client: document.getElementById('siteClient').value.trim() || null,
+    notes: document.getElementById('siteNotes').value.trim() || null
+  };
+
+  try {
+    setSyncStatus('loading');
+    if (editId) {
+      await dbUpdate('bl_sites', editId, row);
+      const idx = DB.sites.findIndex(s => s.id === editId);
+      if (idx !== -1) DB.sites[idx] = { ...DB.sites[idx], ...row };
+      toast('Site updated!');
+    } else {
+      const saved = await dbInsert('bl_sites', row);
+      DB.sites.unshift(saved || row);
+      toast('Site saved!');
+    }
+    setSyncStatus('ok');
+    closeSiteModal();
+    renderSites();
+    populateSiteSelects();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+function renderSites() {
+  let sites = siteFilterStatus === 'all' ? DB.sites : DB.sites.filter(s => s.status === siteFilterStatus);
+
+  const grid = document.getElementById('siteGrid');
+  if (sites.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1"><div class="empty-state">
+      <div class="empty-icon">🏗</div>
+      <h3>${siteFilterStatus === 'all' ? 'No sites added' : 'No ' + siteFilterStatus + ' sites'}</h3>
+      <p>Add your construction sites to start tracking</p>
+      <br><button class="btn btn-primary" onclick="openAddSite()">＋ Add Site</button>
+    </div></div>`;
+    return;
+  }
+
+  grid.innerHTML = sites.map(s => {
+    const inc = DB.transactions.filter(t => t.site_id === s.id && t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+    const exp = DB.transactions.filter(t => t.site_id === s.id && t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+    const profit = inc - exp;
+    const statusClass = { active: 'status-active', completed: 'status-completed', paused: 'status-paused' };
+    const budgetPct = s.budget ? Math.min(100, exp / s.budget * 100) : 0;
+
+    return `
+      <div class="site-card fade-in">
+        <div class="site-card-header">
+          <div>
+            <div class="site-name">${s.name}</div>
+            <div class="site-location">📍 ${s.location || 'Location not set'}</div>
+            ${s.client ? `<div class="site-location">👤 ${s.client}</div>` : ''}
+          </div>
+          <span class="site-status ${statusClass[s.status] || ''}">${s.status}</span>
+        </div>
+
+        ${s.budget ? `
+          <div style="margin:10px 0">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
+              <span>Budget Used</span>
+              <span>${fmtCurrency(exp)} / ${fmtCurrency(s.budget)}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:${budgetPct}%;background:${budgetPct>90?'var(--danger)':budgetPct>70?'var(--accent)':'var(--primary-light)'}"></div>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="site-pnl">
+          <div class="site-pnl-item">
+            <div class="site-pnl-label">Income</div>
+            <div class="site-pnl-value text-income">${fmtCurrency(inc)}</div>
+          </div>
+          <div class="site-pnl-item">
+            <div class="site-pnl-label">Expense</div>
+            <div class="site-pnl-value text-expense">${fmtCurrency(exp)}</div>
+          </div>
+          <div class="site-pnl-item">
+            <div class="site-pnl-label">P&L</div>
+            <div class="site-pnl-value" style="color:${profit>=0?'var(--primary-light)':'var(--danger)'}">${fmtCurrency(profit)}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-top:14px;">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openSiteDetail('${s.id}')">📋 Details</button>
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="openAddSite('${s.id}')">✏️</button>
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteSite('${s.id}')">🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openSiteDetail(siteId) {
+  const s = DB.sites.find(x => x.id === siteId);
+  if (!s) return;
+  const txns = DB.transactions.filter(t => t.site_id === siteId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const inc = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+  const exp = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+
+  document.getElementById('siteDetailTitle').textContent = '🏗 ' + s.name;
+  document.getElementById('siteDetailContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px;">
+      <div style="text-align:center;padding:14px;background:var(--primary-pale);border-radius:var(--radius-sm);">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Income</div>
+        <div style="font-size:18px;font-weight:800;color:var(--primary-light);font-family:'JetBrains Mono',monospace">${fmtCurrency(inc)}</div>
+      </div>
+      <div style="text-align:center;padding:14px;background:var(--danger-light);border-radius:var(--radius-sm);">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Expense</div>
+        <div style="font-size:18px;font-weight:800;color:var(--danger);font-family:'JetBrains Mono',monospace">${fmtCurrency(exp)}</div>
+      </div>
+      <div style="text-align:center;padding:14px;background:${inc-exp>=0?'var(--primary-pale)':'var(--danger-light)'};border-radius:var(--radius-sm);">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Net P&L</div>
+        <div style="font-size:18px;font-weight:800;color:${inc-exp>=0?'var(--primary)':'var(--danger)'};font-family:'JetBrains Mono',monospace">${fmtCurrency(inc-exp)}</div>
+      </div>
+    </div>
+    <h4 style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px">Transactions (${txns.length})</h4>
+    ${txns.length === 0 ? '<div class="empty-state"><p>No transactions for this site</p></div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Description</th><th>Mode</th><th>Type</th><th>Amount</th></tr></thead>
+          <tbody>
+            ${txns.map(t => `
+              <tr>
+                <td style="font-size:12px;color:var(--text-muted)">${fmtDate(t.date)}</td>
+                <td style="font-size:13px;font-weight:500">${t.description}</td>
+                <td><span class="badge badge-${t.mode}">${t.mode.toUpperCase()}</span></td>
+                <td><span class="badge badge-${t.type}">${t.type}</span></td>
+                <td class="amount-cell ${t.type==='income'?'income-amount':'expense-amount'}">${fmtCurrency(t.amount)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  `;
+  document.getElementById('siteDetailModal').classList.add('open');
+}
+
+function closeSiteDetail() {
+  document.getElementById('siteDetailModal').classList.remove('open');
+}
+
+function deleteSite(id) {
+  pendingDeleteId = id;
+  pendingDeleteType = 'site';
+  const txnCount = DB.transactions.filter(t => t.site_id === id).length;
+  document.getElementById('deleteMsg').textContent = `Are you sure you want to delete this site? It has ${txnCount} transaction(s). Transactions won't be deleted but will lose site link.`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+// ── LEDGER ──
+function openAddPerson(id) {
+  document.getElementById('personEditId').value = '';
+  document.getElementById('personName').value = '';
+  document.getElementById('personType').value = 'worker';
+  document.getElementById('personPhone').value = '';
+  document.getElementById('personOpenBalance').value = '0';
+  document.getElementById('personNotes').value = '';
+  document.getElementById('personModalTitle').textContent = 'Add Person';
+
+  if (id) {
+    const p = DB.persons.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('personEditId').value = id;
+    document.getElementById('personName').value = p.name;
+    document.getElementById('personType').value = p.type || 'worker';
+    document.getElementById('personPhone').value = p.phone || '';
+    document.getElementById('personOpenBalance').value = p.open_balance || 0;
+    document.getElementById('personNotes').value = p.notes || '';
+    document.getElementById('personModalTitle').textContent = 'Edit Person';
+  }
+
+  document.getElementById('personModal').classList.add('open');
+}
+
+function closePersonModal() {
+  document.getElementById('personModal').classList.remove('open');
+}
+
+async function savePerson() {
+  const name = document.getElementById('personName').value.trim();
+  if (!name) { toast('Name mandatory ahe!', 'error'); return; }
+
+  const editId = document.getElementById('personEditId').value;
+  const row = {
+    id: editId || genId(),
+    name,
+    type: document.getElementById('personType').value,
+    phone: document.getElementById('personPhone').value.trim() || null,
+    open_balance: parseFloat(document.getElementById('personOpenBalance').value) || 0,
+    notes: document.getElementById('personNotes').value.trim() || null
+  };
+
+  try {
+    setSyncStatus('loading');
+    if (editId) {
+      await dbUpdate('bl_persons', editId, row);
+      const idx = DB.persons.findIndex(p => p.id === editId);
+      if (idx !== -1) DB.persons[idx] = { ...DB.persons[idx], ...row };
+      toast('Person updated!');
+    } else {
+      const saved = await dbInsert('bl_persons', row);
+      DB.persons.unshift(saved || row);
+      toast('Person saved!');
+    }
+    setSyncStatus('ok');
+    closePersonModal();
+    renderPersonGrid();
+    populateSiteSelects();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+function renderPersonGrid() {
+  const search = (document.getElementById('personSearch')?.value || '').toLowerCase();
+  let persons = DB.persons.filter(p => !search || p.name.toLowerCase().includes(search));
+
+  const typeIcons = { worker: '👷', supplier: '🏪', client: '👤', contractor: '🔧', other: '👥' };
+  const typeLabels = { worker: 'Worker / Labour', supplier: 'Supplier', client: 'Client', contractor: 'Contractor', other: 'Other' };
+
+  const grid = document.getElementById('personGrid');
+  if (persons.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1"><div class="empty-state">
+      <div class="empty-icon">👥</div>
+      <h3>${search ? 'No person found' : 'No persons added'}</h3>
+      <p>${search ? 'Try different search' : 'Add workers, suppliers, and clients'}</p>
+      ${!search ? '<br><button class="btn btn-primary" onclick="openAddPerson()">＋ Add Person</button>' : ''}
+    </div></div>`;
+    return;
+  }
+
+  grid.innerHTML = persons.map(p => {
+    const paid = DB.transactions.filter(t => t.person_id === p.id && t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+    const received = DB.transactions.filter(t => t.person_id === p.id && t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+    const balance = (Number(p.open_balance) || 0) + received - paid;
+    const balClass = balance > 0 ? 'balance-due' : balance < 0 ? 'balance-advance' : 'balance-clear';
+    const balLabel = balance > 0 ? `${fmtCurrency(balance)} due` : balance < 0 ? `${fmtCurrency(Math.abs(balance))} advance` : 'Settled';
+
+    return `
+      <div class="person-card fade-in" onclick="openPersonDetail('${p.id}')">
+        <div class="person-avatar">${(typeIcons[p.type] || '👥')}</div>
+        <div class="person-name">${p.name}</div>
+        <div class="person-type">${typeLabels[p.type] || 'Other'} ${p.phone ? '· 📞 ' + p.phone : ''}</div>
+        <div class="person-balance ${balClass}">${balLabel}</div>
+        <div style="display:flex;gap:6px;margin-top:12px;">
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();openAddPerson('${p.id}')" title="Edit">✏️</button>
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();deletePerson('${p.id}')" title="Delete">🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openPersonDetail(personId) {
+  const p = DB.persons.find(x => x.id === personId);
+  if (!p) return;
+  const txns = DB.transactions.filter(t => t.person_id === personId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const paid = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+  const received = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+  const openBal = Number(p.open_balance) || 0;
+  const closingBal = openBal + received - paid;
+
+  document.getElementById('personDetailTitle').textContent = '👤 ' + p.name;
+  document.getElementById('personDetailContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+      <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Opening Bal</div>
+        <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--text)">${fmtCurrency(openBal)}</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--primary-pale);border-radius:var(--radius-sm)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Received</div>
+        <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--primary-light)">${fmtCurrency(received)}</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--danger-light);border-radius:var(--radius-sm)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Paid</div>
+        <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--danger)">${fmtCurrency(paid)}</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:${closingBal>=0?'var(--accent-light)':'var(--danger-light)'};border-radius:var(--radius-sm)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Balance</div>
+        <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:${closingBal>=0?'#92400e':'var(--danger)'}">${fmtCurrency(closingBal)}</div>
+      </div>
+    </div>
+    <h4 style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px">Transactions (${txns.length})</h4>
+    ${txns.length === 0 ? '<div class="empty-state"><p>No transactions with this person</p></div>' : `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Description</th><th>Site</th><th>Mode</th><th>Type</th><th>Amount</th></tr></thead>
+          <tbody>
+            ${txns.map(t => `
+              <tr>
+                <td style="font-size:12px;color:var(--text-muted)">${fmtDate(t.date)}</td>
+                <td style="font-size:13px;font-weight:500">${t.description}</td>
+                <td style="font-size:12px">${t.site_id ? getSiteName(t.site_id) : '—'}</td>
+                <td><span class="badge badge-${t.mode}">${t.mode.toUpperCase()}</span></td>
+                <td><span class="badge badge-${t.type}">${t.type}</span></td>
+                <td class="amount-cell ${t.type==='income'?'income-amount':'expense-amount'}">${fmtCurrency(t.amount)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  `;
+  document.getElementById('personDetailModal').classList.add('open');
+}
+
+function closePersonDetail() {
+  document.getElementById('personDetailModal').classList.remove('open');
+}
+
+function deletePerson(id) {
+  pendingDeleteId = id;
+  pendingDeleteType = 'person';
+  const txnCount = DB.transactions.filter(t => t.person_id === id).length;
+  document.getElementById('deleteMsg').textContent = `Are you sure you want to delete this person? They have ${txnCount} transaction(s). Transactions won't be deleted.`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+// ── REPORTS ──
+function populateReportFilters() {
+  const sel = document.getElementById('reportSiteFilter');
+  while (sel.options.length > 1) sel.remove(1);
+  DB.sites.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+}
+
+function clearReportFilters() {
+  document.getElementById('reportSiteFilter').value = '';
+  document.getElementById('reportDateFrom').value = '';
+  document.getElementById('reportDateTo').value = '';
+  renderReports();
+}
+
+function renderReports() {
+  const siteF = document.getElementById('reportSiteFilter').value;
+  const dateFrom = document.getElementById('reportDateFrom').value;
+  const dateTo = document.getElementById('reportDateTo').value;
+
+  let txns = [...DB.transactions];
+  if (siteF) txns = txns.filter(t => t.site_id === siteF);
+  if (dateFrom) txns = txns.filter(t => t.date >= dateFrom);
+  if (dateTo) txns = txns.filter(t => t.date <= dateTo);
+
+  const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+  const expense = txns.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+  const profit = income - expense;
+
+  // P&L Summary
+  document.getElementById('reportPnL').innerHTML = `
+    <div class="pnl-table">
+      <div class="pnl-row">
+        <span class="pnl-label" style="color:var(--primary-light)">↑ Total Income</span>
+        <span class="pnl-amount" style="color:var(--primary-light)">${fmtCurrency(income)}</span>
+      </div>
+      <div class="pnl-row">
+        <span class="pnl-label" style="color:var(--danger)">↓ Total Expense</span>
+        <span class="pnl-amount" style="color:var(--danger)">${fmtCurrency(expense)}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="pnl-row total">
+        <span class="pnl-label" style="color:${profit>=0?'var(--primary)':'var(--danger)'}">${profit>=0?'▲ Net Profit':'▼ Net Loss'}</span>
+        <span class="pnl-amount" style="color:${profit>=0?'var(--primary)':'var(--danger)'};font-size:18px">${fmtCurrency(profit)}</span>
+      </div>
+      <div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;color:var(--text-muted)">
+        ${txns.length} transactions · ${txns.filter(t=>t.type==='income').length} income · ${txns.filter(t=>t.type==='expense').length} expense
+      </div>
+    </div>
+  `;
+
+  // Site-wise P&L
+  const sitePnLEl = document.getElementById('reportSitePnL');
+  if (DB.sites.length === 0) {
+    sitePnLEl.innerHTML = '<div class="empty-state"><p>No sites added</p></div>';
+  } else {
+    const rows = DB.sites.map(s => {
+      const sTxns = txns.filter(t => t.site_id === s.id);
+      const sInc = sTxns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+      const sExp = sTxns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+      return { name: s.name, inc: sInc, exp: sExp, pnl: sInc - sExp };
+    }).sort((a, b) => b.pnl - a.pnl);
+
+    sitePnLEl.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Site</th><th>Income</th><th>Expense</th><th>P&L</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td style="font-weight:600;font-size:13px">${r.name}</td>
+          <td class="amount-cell income-amount">${fmtCurrency(r.inc)}</td>
+          <td class="amount-cell expense-amount">${fmtCurrency(r.exp)}</td>
+          <td class="amount-cell" style="color:${r.pnl>=0?'var(--primary)':'var(--danger)'};font-weight:700">${fmtCurrency(r.pnl)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+
+  // Payment mode
+  const modes = { cash: 0, upi: 0, cheque: 0 };
+  txns.forEach(t => { modes[t.mode] = (modes[t.mode] || 0) + Number(t.amount); });
+  const totalAmt = Object.values(modes).reduce((a, b) => a + b, 0);
+  document.getElementById('reportPayMode').innerHTML = `
+    <div class="pnl-table">
+      ${Object.entries(modes).map(([mode, amt]) => `
+        <div class="pnl-row">
+          <span class="pnl-label">
+            ${{ cash: '💵 Cash', upi: '📱 UPI', cheque: '📄 Cheque' }[mode]}
+            <span style="font-size:11px;color:var(--text-muted);margin-left:6px">${totalAmt ? Math.round(amt/totalAmt*100) : 0}%</span>
+          </span>
+          <span class="pnl-amount">${fmtCurrency(amt)}</span>
+        </div>
+      `).join('')}
+      <div class="pnl-row total">
+        <span class="pnl-label">Total</span>
+        <span class="pnl-amount">${fmtCurrency(totalAmt)}</span>
+      </div>
+    </div>
+  `;
+
+  // Person-wise
+  const personAmts = {};
+  txns.forEach(t => {
+    if (!t.person_id) return;
+    if (!personAmts[t.person_id]) personAmts[t.person_id] = { paid: 0, received: 0 };
+    if (t.type === 'expense') personAmts[t.person_id].paid += Number(t.amount);
+    else personAmts[t.person_id].received += Number(t.amount);
+  });
+
+  const personRows = Object.entries(personAmts).map(([pid, data]) => ({
+    name: getPersonName(pid),
+    ...data,
+    net: data.received - data.paid
+  })).sort((a, b) => (b.paid + b.received) - (a.paid + a.received)).slice(0, 10);
+
+  document.getElementById('reportPersons').innerHTML = personRows.length === 0
+    ? '<div class="empty-state"><p>No person-linked transactions</p></div>'
+    : `<div class="table-wrap"><table>
+        <thead><tr><th>Person</th><th>Received</th><th>Paid</th><th>Balance</th></tr></thead>
+        <tbody>
+          ${personRows.map(r => `<tr>
+            <td style="font-weight:600;font-size:13px">${r.name}</td>
+            <td class="amount-cell income-amount">${fmtCurrency(r.received)}</td>
+            <td class="amount-cell expense-amount">${fmtCurrency(r.paid)}</td>
+            <td class="amount-cell" style="color:${r.net>=0?'var(--primary)':'var(--danger)'}">${fmtCurrency(r.net)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
+}
+
+function printReport() {
+  window.print();
+}
+
+// ── BACKUP ──
+function renderBackupPage() {
+  document.getElementById('lastBackupInfo').textContent = '☁️ Supabase madhe live save hota — backup fakt extra safety sathi';
+
+  document.getElementById('dataSummary').innerHTML = `
+    <div style="padding:16px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="font-size:28px;font-weight:800;color:var(--primary)">${DB.sites.length}</div>
+      <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-top:2px">Sites</div>
+    </div>
+    <div style="padding:16px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="font-size:28px;font-weight:800;color:var(--info)">${DB.transactions.length}</div>
+      <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-top:2px">Transactions</div>
+    </div>
+    <div style="padding:16px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">${DB.persons.length}</div>
+      <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-top:2px">Persons</div>
+    </div>
+    <div style="padding:16px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+      <div style="font-size:28px;font-weight:800;color:var(--primary-light)">☁️</div>
+      <div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-top:2px">Supabase Live</div>
+    </div>
+  `;
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify({ sites: DB.sites, transactions: DB.transactions, persons: DB.persons, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = url;
+  a.download = `buildledger-backup-${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded!');
+}
+
+let pendingRestoreData = null;
+let pendingRestoreMode = 'add';
+
+function handleRestore(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.transactions && !data.sites && !data.persons) {
+        toast('Invalid backup file!', 'error'); return;
+      }
+      pendingRestoreData = data;
+      document.getElementById('restoreFileInfo').innerHTML = `
+        📁 <strong>${file.name}</strong><br>
+        Sites: ${(data.sites||[]).length} · Transactions: ${(data.transactions||[]).length} · Persons: ${(data.persons||[]).length}
+      `;
+      selectRestoreOpt('add');
+      document.getElementById('restoreModal').classList.add('open');
+    } catch(err) {
+      toast('File read karta aali nahi!', 'error');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function selectRestoreOpt(mode) {
+  pendingRestoreMode = mode;
+  document.getElementById('restoreOptAdd').classList.toggle('selected', mode === 'add');
+  document.getElementById('restoreOptOver').classList.toggle('selected', mode === 'overwrite');
+}
+
+function closeRestoreModal() {
+  document.getElementById('restoreModal').classList.remove('open');
+  pendingRestoreData = null;
+}
+
+async function confirmRestore() {
+  if (!pendingRestoreData) return;
+  const data = pendingRestoreData;
+
+  try {
+    setSyncStatus('loading');
+    if (pendingRestoreMode === 'overwrite') {
+      await sb.from('bl_transactions').delete().neq('id', '__none__');
+      await sb.from('bl_sites').delete().neq('id', '__none__');
+      await sb.from('bl_persons').delete().neq('id', '__none__');
+      if (data.sites?.length) await sb.from('bl_sites').insert(data.sites);
+      if (data.persons?.length) await sb.from('bl_persons').insert(data.persons);
+      if (data.transactions?.length) await sb.from('bl_transactions').insert(data.transactions);
+      toast('Data overwrite kela Supabase madhe!');
+    } else {
+      const existingSiteIds = new Set(DB.sites.map(s => s.id));
+      const existingTxnIds = new Set(DB.transactions.map(t => t.id));
+      const existingPersonIds = new Set(DB.persons.map(p => p.id));
+
+      const newSites = (data.sites || []).filter(s => !existingSiteIds.has(s.id));
+      const newPersons = (data.persons || []).filter(p => !existingPersonIds.has(p.id));
+      const newTxns = (data.transactions || []).filter(t => !existingTxnIds.has(t.id));
+
+      if (newSites.length) await sb.from('bl_sites').insert(newSites);
+      if (newPersons.length) await sb.from('bl_persons').insert(newPersons);
+      if (newTxns.length) await sb.from('bl_transactions').insert(newTxns);
+      toast(`${newSites.length + newPersons.length + newTxns.length} navi records add kele!`);
+    }
+
+    await loadAll();
+    setSyncStatus('ok');
+    closeRestoreModal();
+    renderBackupPage();
+    renderDashboard();
+    populateSiteSelects();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Restore failed: ' + e.message, 'error');
+  }
+}
+
+// ── DELETE ──
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('open');
+  pendingDeleteId = null;
+  pendingDeleteType = null;
+}
+
+async function confirmDelete() {
+  if (!pendingDeleteId || !pendingDeleteType) return;
+
+  try {
+    setSyncStatus('loading');
+    if (pendingDeleteType === 'txn') {
+      await dbDelete('bl_transactions', pendingDeleteId);
+      DB.transactions = DB.transactions.filter(t => t.id !== pendingDeleteId);
+      toast('Transaction deleted!', 'warning');
+      renderTransactions();
+    } else if (pendingDeleteType === 'site') {
+      await sb.from('bl_transactions').update({ site_id: null }).eq('site_id', pendingDeleteId);
+      DB.transactions = DB.transactions.map(t => t.site_id === pendingDeleteId ? {...t, site_id: null} : t);
+      await dbDelete('bl_sites', pendingDeleteId);
+      DB.sites = DB.sites.filter(s => s.id !== pendingDeleteId);
+      toast('Site deleted!', 'warning');
+      renderSites();
+      populateSiteSelects();
+    } else if (pendingDeleteType === 'person') {
+      await sb.from('bl_transactions').update({ person_id: null }).eq('person_id', pendingDeleteId);
+      DB.transactions = DB.transactions.map(t => t.person_id === pendingDeleteId ? {...t, person_id: null} : t);
+      await dbDelete('bl_persons', pendingDeleteId);
+      DB.persons = DB.persons.filter(p => p.id !== pendingDeleteId);
+      toast('Person deleted!', 'warning');
+      renderPersonGrid();
+      populateSiteSelects();
+    }
+    setSyncStatus('ok');
+    closeDeleteModal();
+    if (currentPage === 'dashboard') renderDashboard();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Delete failed: ' + e.message, 'error');
+    closeDeleteModal();
+  }
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.remove('open');
+    }
+  });
+});
+
+// ── INIT ──
+loadAll();
+renderDashboard();
+populateSiteSelects();
+</script>
+</body>
+</html>
