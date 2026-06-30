@@ -602,10 +602,13 @@
       <button class="nav-item" onclick="showPage('backup')">
         <span class="nav-icon">💾</span> Backup & Restore
       </button>
+      <button class="nav-item" onclick="openShortcutsModal()">
+        <span class="nav-icon">⌨️</span> Keyboard Shortcuts
+      </button>
     </nav>
 
     <div class="sidebar-footer">
-      BuildLedger Pro v1.0<br>All data saved locally
+      BuildLedger Pro v2.0<br>Supabase Sync · Press 0-9 for shortcuts
     </div>
   </aside>
 
@@ -880,6 +883,18 @@
       <button class="modal-close" onclick="closeTxnModal()">✕</button>
     </div>
     <div class="modal-body">
+      <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;">
+        <div>
+          <div style="font-size:13px;font-weight:600;">🔁 Window open theva</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Save kelyavar modal band na hota, navin entry sathi ready rahil</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;">
+          <input type="checkbox" id="keepOpenToggle" style="opacity:0;width:0;height:0;" onchange="saveKeepOpenPref()">
+          <span id="keepOpenSlider" style="position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:24px;transition:.2s;"></span>
+          <span id="keepOpenKnob" style="position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></span>
+        </label>
+      </div>
+
       <div class="form-group">
         <div class="type-toggle">
           <button class="type-btn income selected" id="typeIncome" onclick="setTxnType('income')">
@@ -946,7 +961,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeTxnModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTxn()">💾 Save Transaction</button>
+      <button class="btn btn-primary" onclick="saveTxn()" id="saveTxnBtn">💾 Save Transaction</button>
     </div>
   </div>
 </div>
@@ -1109,6 +1124,24 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeRestoreModal()">Cancel</button>
       <button class="btn btn-primary" onclick="confirmRestore()">✅ Restore Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Keyboard Shortcuts Modal -->
+<div class="modal-overlay" id="shortcutsModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">⌨️ Keyboard Shortcuts</div>
+      <button class="modal-close" onclick="closeShortcutsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Number key dabla ki tya cha action hoईl. Khali tumhala je pahije te customize kara.</p>
+      <div id="shortcutsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="resetShortcuts()">↺ Reset Default</button>
+      <button class="btn btn-primary" onclick="closeShortcutsModal()">Done</button>
     </div>
   </div>
 </div>
@@ -1447,6 +1480,7 @@ function openAddTxn(id) {
   document.getElementById('chequeNoGroup').style.display = 'none';
   setTxnType('income');
   document.getElementById('txnModalTitle').textContent = 'Add Transaction';
+  loadKeepOpenPref();
 
   if (id) {
     const t = DB.transactions.find(x => x.id === id);
@@ -1466,6 +1500,31 @@ function openAddTxn(id) {
   }
 
   document.getElementById('txnModal').classList.add('open');
+  setTimeout(() => document.getElementById('txnAmount').focus(), 50);
+}
+
+// ── KEEP-OPEN TOGGLE ──
+function loadKeepOpenPref() {
+  const pref = localStorage.getItem('bl_keep_open') === '1';
+  const toggle = document.getElementById('keepOpenToggle');
+  toggle.checked = pref;
+  updateToggleVisual(pref);
+}
+function saveKeepOpenPref() {
+  const checked = document.getElementById('keepOpenToggle').checked;
+  localStorage.setItem('bl_keep_open', checked ? '1' : '0');
+  updateToggleVisual(checked);
+}
+function updateToggleVisual(on) {
+  const slider = document.getElementById('keepOpenSlider');
+  const knob = document.getElementById('keepOpenKnob');
+  if (on) {
+    slider.style.background = 'var(--primary)';
+    knob.style.transform = 'translateX(18px)';
+  } else {
+    slider.style.background = 'var(--border)';
+    knob.style.transform = 'translateX(0)';
+  }
 }
 
 function setTxnType(type) {
@@ -1480,6 +1539,17 @@ document.getElementById('txnMode').addEventListener('change', function() {
 
 function closeTxnModal() {
   document.getElementById('txnModal').classList.remove('open');
+}
+
+function resetTxnFormForNext() {
+  // Keep date, site, mode as-is for fast repeated entry; clear amount/desc/person/notes/cheque
+  document.getElementById('txnEditId').value = '';
+  document.getElementById('txnAmount').value = '';
+  document.getElementById('txnDesc').value = '';
+  document.getElementById('txnNotes').value = '';
+  document.getElementById('txnChequeNo').value = '';
+  document.getElementById('txnModalTitle').textContent = 'Add Transaction';
+  document.getElementById('txnAmount').focus();
 }
 
 async function saveTxn() {
@@ -1517,7 +1587,14 @@ async function saveTxn() {
       toast('Transaction saved!');
     }
     setSyncStatus('ok');
-    closeTxnModal();
+
+    const keepOpen = document.getElementById('keepOpenToggle').checked;
+    if (keepOpen && !editId) {
+      resetTxnFormForNext();
+    } else {
+      closeTxnModal();
+    }
+
     if (currentPage === 'transactions') renderTransactions();
     if (currentPage === 'dashboard') renderDashboard();
   } catch(e) {
@@ -2283,7 +2360,105 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   });
 });
 
+// ── KEYBOARD SHORTCUTS (ALIASES) ──
+const SHORTCUT_ACTIONS = {
+  quickAdd:    { label: 'Add Transaction', fn: () => openQuickAdd() },
+  newSite:     { label: 'Add New Site', fn: () => { showPage('sites'); openAddSite(); } },
+  newPerson:   { label: 'Add New Person', fn: () => { showPage('ledger'); openAddPerson(); } },
+  dashboard:   { label: 'Dashboard var ja', fn: () => showPage('dashboard') },
+  transactions:{ label: 'Transactions var ja', fn: () => showPage('transactions') },
+  sites:       { label: 'Sites var ja', fn: () => showPage('sites') },
+  ledger:      { label: 'Ledger var ja', fn: () => showPage('ledger') },
+  reports:     { label: 'Reports var ja', fn: () => showPage('reports') },
+  backup:      { label: 'Backup page var ja', fn: () => showPage('backup') },
+  none:        { label: '(Kahi nahi)', fn: () => {} }
+};
+
+const DEFAULT_SHORTCUTS = {
+  '0': 'quickAdd',
+  '1': 'dashboard',
+  '2': 'transactions',
+  '3': 'sites',
+  '4': 'ledger',
+  '5': 'reports',
+  '6': 'newSite',
+  '7': 'newPerson',
+  '8': 'backup',
+  '9': 'none'
+};
+
+let userShortcuts = {};
+
+function loadShortcuts() {
+  const saved = localStorage.getItem('bl_shortcuts');
+  if (saved) {
+    try { userShortcuts = JSON.parse(saved); } catch(e) { userShortcuts = { ...DEFAULT_SHORTCUTS }; }
+  } else {
+    userShortcuts = { ...DEFAULT_SHORTCUTS };
+  }
+}
+
+function saveShortcuts() {
+  localStorage.setItem('bl_shortcuts', JSON.stringify(userShortcuts));
+}
+
+function resetShortcuts() {
+  userShortcuts = { ...DEFAULT_SHORTCUTS };
+  saveShortcuts();
+  renderShortcutsList();
+  toast('Default shortcuts la reset kele!');
+}
+
+function openShortcutsModal() {
+  renderShortcutsList();
+  document.getElementById('shortcutsModal').classList.add('open');
+}
+function closeShortcutsModal() {
+  document.getElementById('shortcutsModal').classList.remove('open');
+}
+
+function renderShortcutsList() {
+  const el = document.getElementById('shortcutsList');
+  el.innerHTML = Object.keys(DEFAULT_SHORTCUTS).map(key => {
+    const currentAction = userShortcuts[key] || 'none';
+    const options = Object.entries(SHORTCUT_ACTIONS).map(([actionKey, action]) =>
+      `<option value="${actionKey}" ${actionKey === currentAction ? 'selected' : ''}>${action.label}</option>`
+    ).join('');
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+        <div style="width:32px;height:32px;background:var(--primary);color:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-family:'JetBrains Mono',monospace;flex-shrink:0;">${key}</div>
+        <select class="form-select" style="flex:1;padding:7px 12px;font-size:13px;" onchange="updateShortcut('${key}', this.value)">
+          ${options}
+        </select>
+      </div>`;
+  }).join('');
+}
+
+function updateShortcut(key, actionKey) {
+  userShortcuts[key] = actionKey;
+  saveShortcuts();
+}
+
+document.addEventListener('keydown', function(e) {
+  // Ignore if typing in an input/textarea/select, or if a modal text field is focused
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  // Ignore if any modifier key held (avoid clashing with browser shortcuts)
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const key = e.key;
+  if (userShortcuts[key]) {
+    const actionKey = userShortcuts[key];
+    const action = SHORTCUT_ACTIONS[actionKey];
+    if (action && actionKey !== 'none') {
+      e.preventDefault();
+      action.fn();
+    }
+  }
+});
+
 // ── INIT ──
+loadShortcuts();
 loadAll();
 renderDashboard();
 populateSiteSelects();
