@@ -770,7 +770,10 @@
             <span class="search-icon">🔍</span>
             <input class="form-input" id="personSearch" placeholder="Search person..." oninput="renderPersonGrid()">
           </div>
-          <button class="btn btn-primary" onclick="openAddPerson()">＋ Add Person</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-accent" onclick="openAdjustBalance()">💰 Dene-Ghene Baki Add</button>
+            <button class="btn btn-primary" onclick="openAddPerson()">＋ Add Person</button>
+          </div>
         </div>
 
         <div class="person-grid" id="personGrid">
@@ -822,6 +825,33 @@
           <div class="card">
             <div class="card-header"><div class="card-title">👥 Person-wise Summary</div></div>
             <div class="card-body" id="reportPersons"></div>
+          </div>
+
+          <!-- Person Ledger Statement (Dene-Ghene) -->
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-header">
+              <div class="card-title">💰 Person Ledger Statement — Dene/Ghene</div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <select class="form-select" style="width:200px;padding:7px 12px;font-size:12px;" id="ledgerPersonFilter" onchange="renderPersonLedgerStatement()">
+                  <option value="">Sagle Persons</option>
+                </select>
+                <select class="form-select" style="width:150px;padding:7px 12px;font-size:12px;" id="ledgerBalanceFilter" onchange="renderPersonLedgerStatement()">
+                  <option value="">Sagle</option>
+                  <option value="due">Fakt Baki (Due)</option>
+                  <option value="advance">Fakt Advance</option>
+                  <option value="settled">Fakt Settled</option>
+                </select>
+              </div>
+            </div>
+            <div class="card-body" id="personLedgerStatement" style="padding:0;"></div>
+          </div>
+
+          <!-- Site Ledger Statement -->
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-header">
+              <div class="card-title">🏗 Site Ledger Statement — Detailed</div>
+            </div>
+            <div class="card-body" id="siteLedgerStatement" style="padding:0;"></div>
           </div>
         </div>
       </div>
@@ -1124,6 +1154,68 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeRestoreModal()">Cancel</button>
       <button class="btn btn-primary" onclick="confirmRestore()">✅ Restore Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Adjust Balance (Dene-Ghene) Modal -->
+<div class="modal-overlay" id="adjustBalanceModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">💰 Dene-Ghene Baki Add Kara</div>
+      <button class="modal-close" onclick="closeAdjustBalance()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Person *</label>
+        <select class="form-select" id="adjPerson">
+          <option value="">Select person</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="type-toggle">
+          <button class="type-btn expense selected" id="adjTypeDene" onclick="setAdjType('dene')">
+            ↓ Mi Tyala Dile (Dene)
+          </button>
+          <button class="type-btn income" id="adjTypeGhene" onclick="setAdjType('ghene')">
+            ↑ Tyacha Kadun Ghyaych (Ghene)
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
+          <strong>Dene</strong> = mi tyala paise dile/dyaycha ahe (jase advance, majuri).<br>
+          <strong>Ghene</strong> = to mala paise deणार ahe / tyacha kadun ghyaych ahe.
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date *</label>
+          <input type="date" class="form-input" id="adjDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount (₹) *</label>
+          <input type="number" class="form-input amount-field" id="adjAmount" placeholder="0.00">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Site (optional)</label>
+        <select class="form-select" id="adjSite">
+          <option value="">Select site (optional)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Reason / Notes</label>
+        <input type="text" class="form-input" id="adjNotes" placeholder="e.g. Advance dile, Sahitya purchase sathi...">
+      </div>
+
+      <div id="adjCurrentBalance" style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px 14px;font-size:12px;color:var(--text-muted);display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeAdjustBalance()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAdjustBalance()">💾 Save Karo</button>
     </div>
   </div>
 </div>
@@ -1887,6 +1979,113 @@ function deleteSite(id) {
 }
 
 // ── LEDGER ──
+// ── DENE-GHENE BAKI ADJUSTMENT ──
+let currentAdjType = 'dene';
+
+function openAdjustBalance(personId) {
+  // Populate person select
+  const sel = document.getElementById('adjPerson');
+  while (sel.options.length > 1) sel.remove(1);
+  DB.persons.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  sel.value = personId || '';
+
+  // Populate site select
+  const siteSel = document.getElementById('adjSite');
+  while (siteSel.options.length > 1) siteSel.remove(1);
+  DB.sites.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    siteSel.appendChild(opt);
+  });
+
+  document.getElementById('adjDate').value = today();
+  document.getElementById('adjAmount').value = '';
+  document.getElementById('adjNotes').value = '';
+  document.getElementById('adjSite').value = '';
+  setAdjType('dene');
+
+  if (personId) showAdjCurrentBalance(personId);
+  sel.onchange = () => showAdjCurrentBalance(sel.value);
+
+  document.getElementById('adjustBalanceModal').classList.add('open');
+  setTimeout(() => document.getElementById('adjAmount').focus(), 50);
+}
+
+function showAdjCurrentBalance(personId) {
+  const box = document.getElementById('adjCurrentBalance');
+  if (!personId) { box.style.display = 'none'; return; }
+  const p = DB.persons.find(x => x.id === personId);
+  if (!p) { box.style.display = 'none'; return; }
+  const txns = DB.transactions.filter(t => t.person_id === personId);
+  const received = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+  const paid = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+  const balance = (Number(p.open_balance) || 0) + received - paid;
+  let txt;
+  if (balance > 0) txt = `📌 Sध्या <strong>${p.name}</strong> kडे ${fmtCurrency(balance)} baki ahe (tyala dyaych)`;
+  else if (balance < 0) txt = `📌 Sध्या <strong>${p.name}</strong> la ${fmtCurrency(Math.abs(balance))} advance dilet`;
+  else txt = `📌 <strong>${p.name}</strong> cha hisab सध्या settled ahe`;
+  box.innerHTML = txt;
+  box.style.display = 'block';
+}
+
+function setAdjType(type) {
+  currentAdjType = type;
+  document.getElementById('adjTypeDene').classList.toggle('selected', type === 'dene');
+  document.getElementById('adjTypeGhene').classList.toggle('selected', type === 'ghene');
+}
+
+function closeAdjustBalance() {
+  document.getElementById('adjustBalanceModal').classList.remove('open');
+}
+
+async function saveAdjustBalance() {
+  const personId = document.getElementById('adjPerson').value;
+  const date = document.getElementById('adjDate').value;
+  const amount = parseFloat(document.getElementById('adjAmount').value);
+  const notes = document.getElementById('adjNotes').value.trim();
+  const siteId = document.getElementById('adjSite').value || null;
+
+  if (!personId) { toast('Person select kara!', 'error'); return; }
+  if (!date || !amount || amount <= 0) { toast('Date aani valid amount takा!', 'error'); return; }
+
+  const person = DB.persons.find(p => p.id === personId);
+  const txnType = currentAdjType === 'dene' ? 'expense' : 'income';
+  const defaultDesc = currentAdjType === 'dene'
+    ? `Dene - ${person.name}${notes ? ': ' + notes : ''}`
+    : `Ghene - ${person.name}${notes ? ': ' + notes : ''}`;
+
+  const row = {
+    id: genId(),
+    date, amount,
+    description: defaultDesc,
+    mode: 'cash',
+    type: txnType,
+    site_id: siteId,
+    person_id: personId,
+    notes: notes || null,
+    cheque_no: null
+  };
+
+  try {
+    setSyncStatus('loading');
+    const saved = await dbInsert('bl_transactions', row);
+    DB.transactions.unshift(saved || row);
+    setSyncStatus('ok');
+    toast(`${currentAdjType === 'dene' ? 'Dene' : 'Ghene'} baki entry add zali!`);
+    closeAdjustBalance();
+    renderPersonGrid();
+    if (currentPage === 'dashboard') renderDashboard();
+    if (currentPage === 'transactions') renderTransactions();
+  } catch(e) {
+    setSyncStatus('error');
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
 function openAddPerson(id) {
   document.getElementById('personEditId').value = '';
   document.getElementById('personName').value = '';
@@ -1983,6 +2182,7 @@ function renderPersonGrid() {
         <div class="person-type">${typeLabels[p.type] || 'Other'} ${p.phone ? '· 📞 ' + p.phone : ''}</div>
         <div class="person-balance ${balClass}">${balLabel}</div>
         <div style="display:flex;gap:6px;margin-top:12px;">
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;" onclick="event.stopPropagation();openAdjustBalance('${p.id}')" title="Baki Adjust">💰 Baki Adjust</button>
           <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();openAddPerson('${p.id}')" title="Edit">✏️</button>
           <button class="btn btn-ghost btn-sm btn-icon" onclick="event.stopPropagation();deletePerson('${p.id}')" title="Delete">🗑</button>
         </div>
@@ -2000,23 +2200,42 @@ function openPersonDetail(personId) {
   const openBal = Number(p.open_balance) || 0;
   const closingBal = openBal + received - paid;
 
+  let statusBanner;
+  if (closingBal > 0) {
+    statusBanner = `<div style="background:var(--danger-light);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <div><div style="font-size:11px;color:var(--danger);font-weight:700;text-transform:uppercase;">⚠️ Baki Aahe — Tyala Dyaych</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Ya personala ajun paise dyaаyche ahet</div></div>
+      <div style="font-size:22px;font-weight:800;color:var(--danger);font-family:'JetBrains Mono',monospace;">${fmtCurrency(closingBal)}</div>
+    </div>`;
+  } else if (closingBal < 0) {
+    statusBanner = `<div style="background:var(--primary-pale);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <div><div style="font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase;">✓ Advance Dilet</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Garajepeksha jast paise dilet ya personala</div></div>
+      <div style="font-size:22px;font-weight:800;color:var(--primary);font-family:'JetBrains Mono',monospace;">${fmtCurrency(Math.abs(closingBal))}</div>
+    </div>`;
+  } else {
+    statusBanner = `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;">✓ Settled</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Hisab barobar ahe, kahi baki nahi</div></div>
+      <div style="font-size:22px;font-weight:800;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">₹0</div>
+    </div>`;
+  }
+
   document.getElementById('personDetailTitle').textContent = '👤 ' + p.name;
   document.getElementById('personDetailContent').innerHTML = `
+    ${statusBanner}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
       <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
         <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Opening Bal</div>
         <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--text)">${fmtCurrency(openBal)}</div>
       </div>
       <div style="text-align:center;padding:12px;background:var(--primary-pale);border-radius:var(--radius-sm)">
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Received</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Tyani Dile (↑)</div>
         <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--primary-light)">${fmtCurrency(received)}</div>
       </div>
       <div style="text-align:center;padding:12px;background:var(--danger-light);border-radius:var(--radius-sm)">
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Paid</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Aapan Dile (↓)</div>
         <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--danger)">${fmtCurrency(paid)}</div>
       </div>
       <div style="text-align:center;padding:12px;background:${closingBal>=0?'var(--accent-light)':'var(--danger-light)'};border-radius:var(--radius-sm)">
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Balance</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Net Balance</div>
         <div style="font-size:15px;font-weight:800;font-family:'JetBrains Mono',monospace;color:${closingBal>=0?'#92400e':'var(--danger)'}">${fmtCurrency(closingBal)}</div>
       </div>
     </div>
@@ -2065,6 +2284,16 @@ function populateReportFilters() {
     opt.value = s.id; opt.textContent = s.name;
     sel.appendChild(opt);
   });
+
+  const personSel = document.getElementById('ledgerPersonFilter');
+  if (personSel) {
+    while (personSel.options.length > 1) personSel.remove(1);
+    DB.persons.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id; opt.textContent = p.name;
+      personSel.appendChild(opt);
+    });
+  }
 }
 
 function clearReportFilters() {
@@ -2072,6 +2301,127 @@ function clearReportFilters() {
   document.getElementById('reportDateFrom').value = '';
   document.getElementById('reportDateTo').value = '';
   renderReports();
+}
+
+// ── PERSON LEDGER STATEMENT (Dene/Ghene) ──
+function renderPersonLedgerStatement() {
+  const el = document.getElementById('personLedgerStatement');
+  if (!el) return;
+  const personF = document.getElementById('ledgerPersonFilter')?.value || '';
+  const balF = document.getElementById('ledgerBalanceFilter')?.value || '';
+
+  let persons = personF ? DB.persons.filter(p => p.id === personF) : DB.persons;
+
+  const rows = persons.map(p => {
+    const txns = DB.transactions.filter(t => t.person_id === p.id);
+    const received = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+    const given = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+    const opening = Number(p.open_balance) || 0;
+    const balance = opening + received - given;
+    const lastTxn = txns.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    return { person: p, given, received, opening, balance, txnCount: txns.length, lastDate: lastTxn?.date };
+  }).filter(r => {
+    if (balF === 'due') return r.balance > 0;
+    if (balF === 'advance') return r.balance < 0;
+    if (balF === 'settled') return r.balance === 0;
+    return true;
+  }).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><h3>Data nahi</h3><p>Filter change karun baghा, kinva persons add kara</p></div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Person</th>
+      <th>Type</th>
+      <th>Opening</th>
+      <th style="color:var(--primary-light)">Tyani Dile (↑)</th>
+      <th style="color:var(--danger)">Aapan Dile (↓)</th>
+      <th>Current Balance</th>
+      <th>Status</th>
+      <th>Last Entry</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => {
+        const typeIcons = { worker: '👷', supplier: '🏪', client: '👤', contractor: '🔧', other: '👥' };
+        let statusBadge, statusText;
+        if (r.balance > 0) {
+          statusBadge = 'background:var(--danger-light);color:var(--danger)';
+          statusText = `${fmtCurrency(r.balance)} BAKI (dyaych ahe)`;
+        } else if (r.balance < 0) {
+          statusBadge = 'background:var(--primary-pale);color:var(--primary)';
+          statusText = `${fmtCurrency(Math.abs(r.balance))} ADVANCE (jast dilet)`;
+        } else {
+          statusBadge = 'background:var(--surface2);color:var(--text-muted)';
+          statusText = 'SETTLED ✓';
+        }
+        return `<tr onclick="openPersonDetail('${r.person.id}')" style="cursor:pointer;">
+          <td style="font-weight:600;font-size:13px;">${typeIcons[r.person.type]||'👥'} ${r.person.name}</td>
+          <td style="font-size:11px;color:var(--text-muted);text-transform:capitalize;">${r.person.type}</td>
+          <td class="amount-cell" style="color:var(--text-muted);font-size:12px;">${fmtCurrency(r.opening)}</td>
+          <td class="amount-cell income-amount">${fmtCurrency(r.received)}</td>
+          <td class="amount-cell expense-amount">${fmtCurrency(r.given)}</td>
+          <td class="amount-cell" style="font-weight:800;font-size:14px;color:${r.balance>0?'var(--danger)':r.balance<0?'var(--primary)':'var(--text-muted)'}">${fmtCurrency(Math.abs(r.balance))}</td>
+          <td><span class="badge" style="${statusBadge}">${statusText}</span></td>
+          <td style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${r.lastDate ? fmtDate(r.lastDate) : '—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>
+  <div style="padding:14px 20px;background:var(--surface2);border-top:1px solid var(--border);display:flex;gap:24px;flex-wrap:wrap;">
+    <div style="font-size:12px;"><span style="color:var(--text-muted);">Total Baki (tyanni dyaych):</span> <strong style="color:var(--danger);">${fmtCurrency(rows.filter(r=>r.balance>0).reduce((s,r)=>s+r.balance,0))}</strong></div>
+    <div style="font-size:12px;"><span style="color:var(--text-muted);">Total Advance (aapan jast dilet):</span> <strong style="color:var(--primary);">${fmtCurrency(rows.filter(r=>r.balance<0).reduce((s,r)=>s+Math.abs(r.balance),0))}</strong></div>
+  </div>`;
+}
+
+// ── SITE LEDGER STATEMENT ──
+function renderSiteLedgerStatement() {
+  const el = document.getElementById('siteLedgerStatement');
+  if (!el) return;
+
+  if (DB.sites.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗</div><h3>Sites nahi</h3><p>Pahile site add kara</p></div>';
+    return;
+  }
+
+  const rows = DB.sites.map(s => {
+    const txns = DB.transactions.filter(t => t.site_id === s.id);
+    const income = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
+    const expense = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+    const personIds = [...new Set(txns.filter(t => t.person_id).map(t => t.person_id))];
+    const budgetUsedPct = s.budget ? Math.min(100, expense / s.budget * 100) : null;
+    return { site: s, income, expense, pnl: income - expense, txnCount: txns.length, personCount: personIds.length, budgetUsedPct };
+  }).sort((a, b) => b.expense - a.expense);
+
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Site</th>
+      <th>Status</th>
+      <th>Income</th>
+      <th>Expense</th>
+      <th>Net P&L</th>
+      <th>Budget Used</th>
+      <th>Transactions</th>
+      <th>People Involved</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => {
+        const statusClass = { active: 'status-active', completed: 'status-completed', paused: 'status-paused' };
+        return `<tr onclick="openSiteDetail('${r.site.id}')" style="cursor:pointer;">
+          <td style="font-weight:600;font-size:13px;">🏗 ${r.site.name}</td>
+          <td><span class="site-status ${statusClass[r.site.status]||''}">${r.site.status}</span></td>
+          <td class="amount-cell income-amount">${fmtCurrency(r.income)}</td>
+          <td class="amount-cell expense-amount">${fmtCurrency(r.expense)}</td>
+          <td class="amount-cell" style="font-weight:800;color:${r.pnl>=0?'var(--primary)':'var(--danger)'}">${fmtCurrency(r.pnl)}</td>
+          <td style="font-size:12px;">${r.budgetUsedPct !== null ? Math.round(r.budgetUsedPct) + '%' : '<span style="color:var(--text-light)">—</span>'}</td>
+          <td style="font-size:12px;color:var(--text-muted);">${r.txnCount}</td>
+          <td style="font-size:12px;color:var(--text-muted);">${r.personCount}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
 }
 
 function renderReports() {
@@ -2185,6 +2535,9 @@ function renderReports() {
           </tr>`).join('')}
         </tbody>
       </table></div>`;
+
+  renderPersonLedgerStatement();
+  renderSiteLedgerStatement();
 }
 
 function printReport() {
