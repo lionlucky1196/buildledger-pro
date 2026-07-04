@@ -260,6 +260,8 @@
 
   .badge-income { background: var(--primary-pale); color: var(--primary); }
   .badge-expense { background: var(--danger-light); color: var(--danger); }
+  .badge-sales { background: #e0f2fe; color: #0891b2; }
+  .badge-purchase { background: var(--accent-light); color: #d97706; }
   .badge-cash { background: #ecfdf5; color: #059669; }
   .badge-upi { background: #ede9fe; color: #7c3aed; }
   .badge-cheque { background: #fff7ed; color: #c2410c; }
@@ -517,6 +519,8 @@
 
   .type-btn.income.selected { border-color: var(--primary); background: var(--primary-pale); color: var(--primary); }
   .type-btn.expense.selected { border-color: var(--danger); background: var(--danger-light); color: var(--danger); }
+  .type-btn.sales.selected { border-color: #0891b2; background: #e0f2fe; color: #0891b2; }
+  .type-btn.purchase.selected { border-color: #d97706; background: var(--accent-light); color: #d97706; }
 
   /* Backup box */
   .backup-box {
@@ -697,10 +701,12 @@
           <select class="form-select" style="width:140px" id="txnSiteFilter" onchange="renderTransactions()">
             <option value="">All Sites</option>
           </select>
-          <select class="form-select" style="width:120px" id="txnTypeFilter" onchange="renderTransactions()">
+          <select class="form-select" style="width:130px" id="txnTypeFilter" onchange="renderTransactions()">
             <option value="">All Types</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
+            <option value="income">↑ Income</option>
+            <option value="expense">↓ Expense</option>
+            <option value="sales">🛒 Sales</option>
+            <option value="purchase">📦 Purchase</option>
           </select>
           <select class="form-select" style="width:130px" id="txnModeFilter" onchange="renderTransactions()">
             <option value="">All Modes</option>
@@ -830,16 +836,16 @@
           <!-- Person Ledger Statement (Dene-Ghene) -->
           <div class="card" style="grid-column:1/-1">
             <div class="card-header">
-              <div class="card-title">💰 Person Ledger Statement — Dene/Ghene</div>
+              <div class="card-title">💰 Person Ledger Statement</div>
               <div style="display:flex;gap:8px;align-items:center;">
                 <select class="form-select" style="width:200px;padding:7px 12px;font-size:12px;" id="ledgerPersonFilter" onchange="renderPersonLedgerStatement()">
                   <option value="">Sagle Persons</option>
                 </select>
-                <select class="form-select" style="width:150px;padding:7px 12px;font-size:12px;" id="ledgerBalanceFilter" onchange="renderPersonLedgerStatement()">
-                  <option value="">Sagle</option>
-                  <option value="due">Net (+)</option>
-                  <option value="advance">Net (-)</option>
-                  <option value="settled">₹0 Balance</option>
+                <select class="form-select" style="width:180px;padding:7px 12px;font-size:12px;" id="ledgerBalanceFilter" onchange="renderPersonLedgerStatement()">
+                  <option value="">Sagle Transactions</option>
+                  <option value="opening_only">Fakt Opening Balance Aahe</option>
+                  <option value="positive">Net Positive</option>
+                  <option value="negative">Net Negative</option>
                 </select>
               </div>
             </div>
@@ -927,12 +933,10 @@
 
       <div class="form-group">
         <div class="type-toggle">
-          <button class="type-btn income selected" id="typeIncome" onclick="setTxnType('income')">
-            ↑ Income
-          </button>
-          <button class="type-btn expense" id="typeExpense" onclick="setTxnType('expense')">
-            ↓ Expense
-          </button>
+          <button class="type-btn income selected" id="typeIncome" onclick="setTxnType('income')">↑ Income</button>
+          <button class="type-btn expense" id="typeExpense" onclick="setTxnType('expense')">↓ Expense</button>
+          <button class="type-btn sales" id="typeSales" onclick="setTxnType('sales')">🛒 Sales</button>
+          <button class="type-btn purchase" id="typePurchase" onclick="setTxnType('purchase')">📦 Purchase</button>
         </div>
       </div>
 
@@ -1621,8 +1625,10 @@ function updateToggleVisual(on) {
 
 function setTxnType(type) {
   currentTxnType = type;
-  document.getElementById('typeIncome').classList.toggle('selected', type === 'income');
-  document.getElementById('typeExpense').classList.toggle('selected', type === 'expense');
+  ['income','expense','sales','purchase'].forEach(t => {
+    const el = document.getElementById('type' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.classList.toggle('selected', type === t);
+  });
 }
 
 document.getElementById('txnMode').addEventListener('change', function() {
@@ -1634,14 +1640,15 @@ function closeTxnModal() {
 }
 
 function resetTxnFormForNext() {
-  // Keep date, site, mode as-is for fast repeated entry; clear amount/desc/person/notes/cheque
   document.getElementById('txnEditId').value = '';
   document.getElementById('txnAmount').value = '';
   document.getElementById('txnDesc').value = '';
   document.getElementById('txnNotes').value = '';
   document.getElementById('txnChequeNo').value = '';
   document.getElementById('txnModalTitle').textContent = 'Add Transaction';
-  document.getElementById('txnAmount').focus();
+  // Date field var focus — user date change karoon mag amount takto
+  document.getElementById('txnDate').focus();
+  document.getElementById('txnDate').select();
 }
 
 async function saveTxn() {
@@ -1719,7 +1726,8 @@ function renderTransactions() {
     t.description.toLowerCase().includes(search) ||
     getSiteName(t.site_id).toLowerCase().includes(search) ||
     getPersonName(t.person_id).toLowerCase().includes(search) ||
-    (t.notes || '').toLowerCase().includes(search)
+    (t.notes || '').toLowerCase().includes(search) ||
+    String(t.amount).includes(search)
   );
 
   if (siteF) txns = txns.filter(t => t.site_id === siteF);
@@ -1753,7 +1761,7 @@ function renderTransactions() {
       <td style="font-size:12px">${t.site_id ? getSiteName(t.site_id) : '<span style="color:var(--text-light)">—</span>'}</td>
       <td style="font-size:12px">${t.person_id ? getPersonName(t.person_id) : '<span style="color:var(--text-light)">—</span>'}</td>
       <td><span class="badge badge-${t.mode}">${t.mode.toUpperCase()}</span></td>
-      <td><span class="badge badge-${t.type}">${t.type === 'income' ? '↑ Income' : '↓ Expense'}</span></td>
+      <td><span class="badge badge-${t.type}">${{income:'↑ Income',expense:'↓ Expense',sales:'🛒 Sales',purchase:'📦 Purchase'}[t.type]||t.type}</span></td>
       <td class="amount-cell ${t.type === 'income' ? 'income-amount' : 'expense-amount'}" style="white-space:nowrap">${fmtCurrency(t.amount)}</td>
       <td style="font-size:11px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.notes||''}">${t.notes || '—'}</td>
       <td style="white-space:nowrap">
@@ -2301,16 +2309,18 @@ function renderPersonLedgerStatement() {
 
   const rows = persons.map(p => {
     const txns = DB.transactions.filter(t => t.person_id === p.id);
-    const received = txns.filter(t => t.type === 'income').reduce((a, t) => a + Number(t.amount), 0);
-    const given = txns.filter(t => t.type === 'expense').reduce((a, t) => a + Number(t.amount), 0);
+    const received = txns.filter(t => t.type === 'income' || t.type === 'sales').reduce((a, t) => a + Number(t.amount), 0);
+    const given = txns.filter(t => t.type === 'expense' || t.type === 'purchase').reduce((a, t) => a + Number(t.amount), 0);
     const opening = Number(p.open_balance) || 0;
     const balance = opening + received - given;
-    const lastTxn = txns.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const lastTxn = [...txns].sort((a, b) => new Date(b.date) - new Date(a.date))[0];
     return { person: p, given, received, opening, balance, txnCount: txns.length, lastDate: lastTxn?.date };
   }).filter(r => {
-    if (balF === 'due') return r.balance > 0;
-    if (balF === 'advance') return r.balance < 0;
-    if (balF === 'settled') return r.balance === 0;
+    // Fakt te persons dakha je transactions ahet kinva opening balance set ahe
+    if (r.txnCount === 0 && r.opening === 0) return false;
+    if (balF === 'opening_only') return r.opening !== 0;
+    if (balF === 'positive') return r.balance > 0;
+    if (balF === 'negative') return r.balance < 0;
     return true;
   }).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
 
