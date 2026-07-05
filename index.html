@@ -717,6 +717,7 @@
           <input type="date" class="form-input" style="width:145px" id="txnDateFrom" onchange="renderTransactions()" title="From date">
           <input type="date" class="form-input" style="width:145px" id="txnDateTo" onchange="renderTransactions()" title="To date">
           <button class="btn btn-ghost btn-sm" onclick="clearTxnFilters()">✕ Clear</button>
+          <button class="btn btn-accent btn-sm" onclick="exportTxnPDF()">📄 PDF</button>
           <button class="btn btn-primary btn-sm" onclick="openAddTxn()">＋ Add</button>
         </div>
 
@@ -1700,6 +1701,153 @@ async function saveTxn() {
     setSyncStatus('error');
     toast('Save failed: ' + e.message, 'error');
   }
+}
+
+function exportTxnPDF() {
+  // Current filters vaparoon data filter karo
+  const search = (document.getElementById('txnSearch')?.value || '').toLowerCase();
+  const siteF  = document.getElementById('txnSiteFilter')?.value  || '';
+  const typeF  = document.getElementById('txnTypeFilter')?.value  || '';
+  const modeF  = document.getElementById('txnModeFilter')?.value  || '';
+  const dateFrom = document.getElementById('txnDateFrom')?.value  || '';
+  const dateTo   = document.getElementById('txnDateTo')?.value    || '';
+
+  let txns = [...DB.transactions];
+  if (search) txns = txns.filter(t =>
+    t.description.toLowerCase().includes(search) ||
+    getSiteName(t.site_id).toLowerCase().includes(search) ||
+    getPersonName(t.person_id).toLowerCase().includes(search) ||
+    (t.notes||'').toLowerCase().includes(search) ||
+    String(t.amount).includes(search)
+  );
+  if (siteF)    txns = txns.filter(t => t.site_id === siteF);
+  if (typeF)    txns = txns.filter(t => t.type === typeF);
+  if (modeF)    txns = txns.filter(t => t.mode === modeF);
+  if (dateFrom) txns = txns.filter(t => t.date >= dateFrom);
+  if (dateTo)   txns = txns.filter(t => t.date <= dateTo);
+  txns.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const income  = txns.filter(t => t.type==='income'||t.type==='sales').reduce((s,t)=>s+Number(t.amount),0);
+  const expense = txns.filter(t => t.type==='expense'||t.type==='purchase').reduce((s,t)=>s+Number(t.amount),0);
+  const net     = income - expense;
+
+  // Filter label banva
+  const siteName  = siteF   ? getSiteName(siteF) : 'All Sites';
+  const dateLabel = (dateFrom||dateTo)
+    ? `${dateFrom ? fmtDate(dateFrom) : '—'} to ${dateTo ? fmtDate(dateTo) : '—'}`
+    : 'All Dates';
+  const typeLabel = typeF ? typeF.charAt(0).toUpperCase()+typeF.slice(1) : 'All Types';
+
+  const typeColors = {
+    income:'#1a6b3c', expense:'#ef4444', sales:'#0891b2', purchase:'#d97706'
+  };
+  const typeLabels = {
+    income:'↑ Income', expense:'↓ Expense', sales:'🛒 Sales', purchase:'📦 Purchase'
+  };
+
+  const rows = txns.map((t,i) => `
+    <tr style="background:${i%2===0?'#f8faf9':'#ffffff'}">
+      <td>${fmtDate(t.date)}</td>
+      <td>${t.description}</td>
+      <td>${t.site_id ? getSiteName(t.site_id) : '—'}</td>
+      <td>${t.person_id ? getPersonName(t.person_id) : '—'}</td>
+      <td>${t.mode.toUpperCase()}</td>
+      <td style="color:${typeColors[t.type]||'#333'};font-weight:600">${typeLabels[t.type]||t.type}</td>
+      <td style="text-align:right;font-family:monospace;font-weight:700;color:${(t.type==='income'||t.type==='sales')?'#1a6b3c':'#ef4444'}">${fmtCurrency(t.amount)}</td>
+      <td>${t.notes||'—'}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>BuildLedger Pro — Transaction Report</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1a2e24; padding: 24px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; padding-bottom:16px; border-bottom:2px solid #1a6b3c; }
+    .logo { font-size:20px; font-weight:800; color:#1a6b3c; }
+    .logo span { font-size:11px; font-weight:400; color:#6b8878; display:block; margin-top:2px; }
+    .meta { text-align:right; font-size:11px; color:#6b8878; line-height:1.7; }
+    .filters { display:flex; gap:20px; background:#f0f4f2; padding:10px 14px; border-radius:8px; margin-bottom:16px; font-size:11px; }
+    .filters div { display:flex; flex-direction:column; gap:2px; }
+    .filters strong { font-size:10px; text-transform:uppercase; color:#6b8878; letter-spacing:.5px; }
+    .filters span { font-weight:600; color:#1a2e24; }
+    table { width:100%; border-collapse:collapse; margin-bottom:16px; }
+    thead th { background:#1a6b3c; color:#fff; padding:8px 10px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+    thead th:last-child { text-align:right; }
+    tbody td { padding:7px 10px; border-bottom:1px solid #e2ece6; font-size:11px; vertical-align:middle; }
+    tbody td:last-child { text-align:right; }
+    .summary { display:flex; gap:16px; justify-content:flex-end; margin-top:4px; }
+    .summary-box { padding:10px 16px; border-radius:8px; text-align:center; min-width:120px; }
+    .s-inc  { background:#e8f5ee; }
+    .s-exp  { background:#fee2e2; }
+    .s-net  { background:${net>=0?'#fef3c7':'#fee2e2'}; }
+    .summary-box .lbl { font-size:10px; color:#6b8878; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+    .summary-box .val { font-size:16px; font-weight:800; font-family:monospace; margin-top:2px; color:${net>=0?'#1a6b3c':'#ef4444'}; }
+    .s-inc .val { color:#1a6b3c; }
+    .s-exp .val { color:#ef4444; }
+    .footer { margin-top:20px; padding-top:12px; border-top:1px solid #d1e0d8; font-size:10px; color:#9ab5a8; text-align:center; }
+    @media print {
+      body { padding: 12px; }
+      .no-print { display:none; }
+    }
+  </style>
+  </head><body>
+  <div class="header">
+    <div>
+      <div class="logo">🏗 BuildLedger Pro <span>Construction Accounting</span></div>
+    </div>
+    <div class="meta">
+      <strong>Transaction Report</strong><br>
+      Generated: ${new Date().toLocaleString('en-IN')}<br>
+      Total Records: ${txns.length}
+    </div>
+  </div>
+
+  <div class="filters">
+    <div><strong>Site</strong><span>${siteName}</span></div>
+    <div><strong>Date Range</strong><span>${dateLabel}</span></div>
+    <div><strong>Type</strong><span>${typeLabel}</span></div>
+    <div><strong>Mode</strong><span>${modeF ? modeF.toUpperCase() : 'All'}</span></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Site</th>
+        <th>Person</th>
+        <th>Mode</th>
+        <th>Type</th>
+        <th style="text-align:right">Amount</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#9ab5a8">No transactions found</td></tr>'}</tbody>
+  </table>
+
+  <div class="summary">
+    <div class="summary-box s-inc">
+      <div class="lbl">Income / Sales</div>
+      <div class="val" style="color:#1a6b3c">${fmtCurrency(income)}</div>
+    </div>
+    <div class="summary-box s-exp">
+      <div class="lbl">Expense / Purchase</div>
+      <div class="val" style="color:#ef4444">${fmtCurrency(expense)}</div>
+    </div>
+    <div class="summary-box s-net">
+      <div class="lbl">Net</div>
+      <div class="val">${fmtCurrency(net)}</div>
+    </div>
+  </div>
+
+  <div class="footer">BuildLedger Pro · ${new Date().getFullYear()} · Data exported on ${new Date().toLocaleDateString('en-IN')}</div>
+
+  <script>window.onload = () => window.print();<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
 }
 
 function clearTxnFilters() {
