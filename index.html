@@ -717,7 +717,7 @@
           <input type="date" class="form-input" style="width:145px" id="txnDateFrom" onchange="renderTransactions()" title="From date">
           <input type="date" class="form-input" style="width:145px" id="txnDateTo" onchange="renderTransactions()" title="To date">
           <button class="btn btn-ghost btn-sm" onclick="clearTxnFilters()">✕ Clear</button>
-          <button class="btn btn-accent btn-sm" onclick="exportTxnPDF()">📄 PDF</button>
+          <button class="btn btn-accent btn-sm" onclick="openPdfExportModal()">📄 PDF</button>
           <button class="btn btn-primary btn-sm" onclick="openAddTxn()">＋ Add</button>
         </div>
 
@@ -1243,6 +1243,33 @@
   </div>
 </div>
 
+<!-- PDF Export Options Modal -->
+<div class="modal-overlay" id="pdfExportModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📄 Export PDF</div>
+      <button class="modal-close" onclick="closePdfExportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13.5px;font-weight:600;margin-bottom:10px;">Kontya format madhe export karaycha ahe?</p>
+      <div class="confirm-options">
+        <div class="confirm-option selected" id="pdfOptDetailed" onclick="selectPdfExportOpt('detailed')">
+          <label>📋 Detailed</label>
+          <small>Sarv transactions ek-ek karun list madhe — jashi ata dista tashi.</small>
+        </div>
+        <div class="confirm-option" id="pdfOptSummary" onclick="selectPdfExportOpt('summary')">
+          <label>🧾 Summary</label>
+          <small>Fakt site-wise ani person-wise Net Amount — transaction-wise detail nahi.</small>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePdfExportModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmPdfExport()">✅ Export Karo</button>
+    </div>
+  </div>
+</div>
+
 <!-- Delete Confirm Modal -->
 <div class="modal-overlay" id="deleteModal">
   <div class="modal" style="max-width:380px;">
@@ -1703,8 +1730,28 @@ async function saveTxn() {
   }
 }
 
-function exportTxnPDF() {
-  // Current filters vaparoon data filter karo
+// ── PDF EXPORT (Summary / Detailed) ──
+let pendingPdfExportType = 'detailed';
+
+function openPdfExportModal() {
+  selectPdfExportOpt('detailed');
+  document.getElementById('pdfExportModal').classList.add('open');
+}
+function closePdfExportModal() {
+  document.getElementById('pdfExportModal').classList.remove('open');
+}
+function selectPdfExportOpt(type) {
+  pendingPdfExportType = type;
+  document.getElementById('pdfOptDetailed').classList.toggle('selected', type === 'detailed');
+  document.getElementById('pdfOptSummary').classList.toggle('selected', type === 'summary');
+}
+function confirmPdfExport() {
+  const type = pendingPdfExportType;
+  closePdfExportModal();
+  exportTxnPDF(type);
+}
+
+function getFilteredTxnsForExport() {
   const search = (document.getElementById('txnSearch')?.value || '').toLowerCase();
   const siteF  = document.getElementById('txnSiteFilter')?.value  || '';
   const typeF  = document.getElementById('txnTypeFilter')?.value  || '';
@@ -1726,6 +1773,12 @@ function exportTxnPDF() {
   if (dateFrom) txns = txns.filter(t => t.date >= dateFrom);
   if (dateTo)   txns = txns.filter(t => t.date <= dateTo);
   txns.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return { txns, search, siteF, typeF, modeF, dateFrom, dateTo };
+}
+
+function exportTxnPDF(exportType) {
+  exportType = exportType || 'detailed';
+  const { txns, siteF, typeF, modeF, dateFrom, dateTo } = getFilteredTxnsForExport();
 
   const income  = txns.filter(t => t.type==='income'||t.type==='sales').reduce((s,t)=>s+Number(t.amount),0);
   const expense = txns.filter(t => t.type==='expense'||t.type==='purchase').reduce((s,t)=>s+Number(t.amount),0);
@@ -1745,20 +1798,96 @@ function exportTxnPDF() {
     income:'↑ Income', expense:'↓ Expense', sales:'🛒 Sales', purchase:'📦 Purchase'
   };
 
-  const rows = txns.map((t,i) => `
-    <tr style="background:${i%2===0?'#f8faf9':'#ffffff'}">
-      <td>${fmtDate(t.date)}</td>
-      <td>${t.description}</td>
-      <td>${t.site_id ? getSiteName(t.site_id) : '—'}</td>
-      <td>${t.person_id ? getPersonName(t.person_id) : '—'}</td>
-      <td>${t.mode.toUpperCase()}</td>
-      <td style="color:${typeColors[t.type]||'#333'};font-weight:600">${typeLabels[t.type]||t.type}</td>
-      <td style="text-align:right;font-family:monospace;font-weight:700;color:${(t.type==='income'||t.type==='sales')?'#1a6b3c':'#ef4444'}">${fmtCurrency(t.amount)}</td>
-      <td>${t.notes||'—'}</td>
-    </tr>`).join('');
+  let bodySectionHtml = '';
+  let reportTypeLabel = '';
+
+  if (exportType === 'summary') {
+    reportTypeLabel = 'Summary Report';
+
+    // Site-wise net
+    const siteMap = {};
+    txns.forEach(t => {
+      const key = t.site_id || '__none__';
+      if (!siteMap[key]) siteMap[key] = { name: t.site_id ? getSiteName(t.site_id) : 'No Site', inc: 0, exp: 0 };
+      if (t.type === 'income' || t.type === 'sales') siteMap[key].inc += Number(t.amount);
+      else siteMap[key].exp += Number(t.amount);
+    });
+    const siteRows = Object.values(siteMap).sort((a,b) => Math.abs((b.inc-b.exp)) - Math.abs((a.inc-a.exp)));
+
+    // Person-wise net
+    const personMap = {};
+    txns.forEach(t => {
+      const key = t.person_id || '__none__';
+      if (!personMap[key]) personMap[key] = { name: t.person_id ? getPersonName(t.person_id) : 'No Person', inc: 0, exp: 0 };
+      if (t.type === 'income' || t.type === 'sales') personMap[key].inc += Number(t.amount);
+      else personMap[key].exp += Number(t.amount);
+    });
+    const personRows = Object.values(personMap).sort((a,b) => Math.abs((b.inc-b.exp)) - Math.abs((a.inc-a.exp)));
+
+    const siteRowsHtml = siteRows.length ? siteRows.map((r,i) => {
+      const netVal = r.inc - r.exp;
+      return `<tr style="background:${i%2===0?'#f8faf9':'#ffffff'}">
+        <td>${r.name}</td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:${netVal>=0?'#1a6b3c':'#ef4444'}">${fmtCurrency(Math.abs(netVal))} ${netVal>=0?'(+)':'(-)'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="2" style="text-align:center;padding:16px;color:#9ab5a8">No site data</td></tr>';
+
+    const personRowsHtml = personRows.length ? personRows.map((r,i) => {
+      const netVal = r.inc - r.exp;
+      return `<tr style="background:${i%2===0?'#f8faf9':'#ffffff'}">
+        <td>${r.name}</td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:${netVal>=0?'#1a6b3c':'#ef4444'}">${fmtCurrency(Math.abs(netVal))} ${netVal>=0?'(+)':'(-)'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="2" style="text-align:center;padding:16px;color:#9ab5a8">No person data</td></tr>';
+
+    bodySectionHtml = `
+      <h3 style="font-size:13px;font-weight:700;color:#1a6b3c;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;">🏗 Site-wise Net Amount</h3>
+      <table>
+        <thead><tr><th>Site</th><th style="text-align:right">Net Amount</th></tr></thead>
+        <tbody>${siteRowsHtml}</tbody>
+      </table>
+
+      <h3 style="font-size:13px;font-weight:700;color:#1a6b3c;text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px;">👥 Person-wise Net Amount</h3>
+      <table>
+        <thead><tr><th>Person</th><th style="text-align:right">Net Amount</th></tr></thead>
+        <tbody>${personRowsHtml}</tbody>
+      </table>
+    `;
+  } else {
+    reportTypeLabel = 'Detailed Report';
+    const rows = txns.map((t,i) => `
+      <tr style="background:${i%2===0?'#f8faf9':'#ffffff'}">
+        <td>${fmtDate(t.date)}</td>
+        <td>${t.description}</td>
+        <td>${t.site_id ? getSiteName(t.site_id) : '—'}</td>
+        <td>${t.person_id ? getPersonName(t.person_id) : '—'}</td>
+        <td>${t.mode.toUpperCase()}</td>
+        <td style="color:${typeColors[t.type]||'#333'};font-weight:600">${typeLabels[t.type]||t.type}</td>
+        <td style="text-align:right;font-family:monospace;font-weight:700;color:${(t.type==='income'||t.type==='sales')?'#1a6b3c':'#ef4444'}">${fmtCurrency(t.amount)}</td>
+        <td>${t.notes||'—'}</td>
+      </tr>`).join('');
+
+    bodySectionHtml = `
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Site</th>
+            <th>Person</th>
+            <th>Mode</th>
+            <th>Type</th>
+            <th style="text-align:right">Amount</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#9ab5a8">No transactions found</td></tr>'}</tbody>
+      </table>
+    `;
+  }
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>BuildLedger Pro — Transaction Report</title>
+  <title>BuildLedger Pro — Transaction ${reportTypeLabel}</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1a2e24; padding: 24px; }
@@ -1796,7 +1925,7 @@ function exportTxnPDF() {
       <div class="logo">🏗 BuildLedger Pro <span>Construction Accounting</span></div>
     </div>
     <div class="meta">
-      <strong>Transaction Report</strong><br>
+      <strong>Transaction ${reportTypeLabel}</strong><br>
       Generated: ${new Date().toLocaleString('en-IN')}<br>
       Total Records: ${txns.length}
     </div>
@@ -1809,21 +1938,7 @@ function exportTxnPDF() {
     <div><strong>Mode</strong><span>${modeF ? modeF.toUpperCase() : 'All'}</span></div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Description</th>
-        <th>Site</th>
-        <th>Person</th>
-        <th>Mode</th>
-        <th>Type</th>
-        <th style="text-align:right">Amount</th>
-        <th>Notes</th>
-      </tr>
-    </thead>
-    <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#9ab5a8">No transactions found</td></tr>'}</tbody>
-  </table>
+  ${bodySectionHtml}
 
   <div class="summary">
     <div class="summary-box s-inc">
