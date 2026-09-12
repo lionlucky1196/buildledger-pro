@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BuildLedger Pro — Construction Accounting</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -718,6 +719,7 @@
           <input type="date" class="form-input" style="width:145px" id="txnDateTo" onchange="renderTransactions()" title="To date">
           <button class="btn btn-ghost btn-sm" onclick="clearTxnFilters()">✕ Clear</button>
           <button class="btn btn-accent btn-sm" onclick="openPdfExportModal()">📄 PDF</button>
+          <button class="btn btn-accent btn-sm" onclick="exportToRojmelExcel()" title="Export in Rojmel's Excel import format">📊 Rojmel Excel</button>
           <button class="btn btn-primary btn-sm" onclick="openAddTxn()">＋ Add</button>
         </div>
 
@@ -891,6 +893,19 @@
               <div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.6;">
                 ⚠️ Restoring will ask whether to <strong>merge</strong> with existing data or <strong>overwrite</strong> completely.
               </div>
+            </div>
+          </div>
+
+          <!-- Rojmel Excel Export -->
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-header"><div class="card-title">📊 Export to Rojmel (Excel)</div></div>
+            <div class="card-body">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+                Export all BuildLedger transactions as an Excel file in Rojmel's bulk-import format
+                (Date, Party, Type, Amount, Remark, Mobile Number) — Income/Sales become <strong>IN</strong>, Expense/Purchase become <strong>OUT</strong>.
+                Upload the downloaded file directly into Rojmel's "Upload Excel to Import" option.
+              </p>
+              <button class="btn btn-primary" onclick="exportToRojmelExcel()">⬇ Export All Transactions for Rojmel</button>
             </div>
           </div>
 
@@ -1365,6 +1380,15 @@ function fmtDate(d) {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
+// Rojmel template date format: DD-MM-YYYY
+function fmtDateForRojmel(d) {
+  if (!d) return '';
+  const parts = String(d).split('-');
+  if (parts.length !== 3) return d;
+  const [y, m, day] = parts;
+  return day + '-' + m + '-' + y;
+}
+
 function today() {
   return new Date().toISOString().split('T')[0];
 }
@@ -1728,6 +1752,58 @@ async function saveTxn() {
     setSyncStatus('error');
     toast('Save failed: ' + e.message, 'error');
   }
+}
+
+// ── EXPORT TO ROJMEL (Excel bulk-import format) ──
+// Rojmel's template columns are: Date, Party, Type, Amount, Remark, Mobile Number
+// Type must be IN or OUT. Income/Sales map to IN, Expense/Purchase map to OUT.
+function exportToRojmelExcel() {
+  if (typeof XLSX === 'undefined') { toast('Excel library load nahi zali. Internet check kara.', 'error'); return; }
+
+  const { txns } = getFilteredTxnsForExport();
+  if (txns.length === 0) { toast('Export karnyasathi kahi transactions nahiyet (filters check kara)', 'error'); return; }
+
+  const rows = txns.map(t => {
+    const rojmelType = (t.type === 'income' || t.type === 'sales') ? 'IN' : 'OUT';
+
+    // Party: prefer linked person name, else site name, else description
+    let party = '';
+    if (t.person_id) party = getPersonName(t.person_id);
+    else if (t.site_id) party = getSiteName(t.site_id);
+    else party = t.description || 'Unknown';
+
+    // Remark: description + notes + mode/cheque info, so context isn't lost
+    let remarkParts = [t.description];
+    if (t.notes) remarkParts.push(t.notes);
+    remarkParts.push('[' + t.mode.toUpperCase() + (t.cheque_no ? ' #' + t.cheque_no : '') + ']');
+    if (t.site_id && t.person_id) remarkParts.push('Site: ' + getSiteName(t.site_id));
+
+    // Mobile: only available if linked to a person
+    let mobile = '';
+    if (t.person_id) {
+      const p = DB.persons.find(x => x.id === t.person_id);
+      if (p && p.phone) mobile = p.phone;
+    }
+
+    return {
+      'Date': fmtDateForRojmel(t.date),
+      'Party': party,
+      'Type': rojmelType,
+      'Amount': Number(t.amount) || 0,
+      'Remark': remarkParts.filter(Boolean).join(' - '),
+      'Mobile Number': mobile
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows, { header: ['Date','Party','Type','Amount','Remark','Mobile Number'] });
+  ws['!cols'] = [{wch:14},{wch:22},{wch:8},{wch:12},{wch:40},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+
+  const d = new Date();
+  const fname = `BuildLedger_to_Rojmel_${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast(`${rows.length} transactions Rojmel format madhe export kelya! Ata Rojmel madhe "Upload Excel to Import" ne upload kara.`);
 }
 
 // ── PDF EXPORT (Summary / Detailed) ──
